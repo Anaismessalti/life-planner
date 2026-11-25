@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --c-rasp: 168 50 120;   /* #A83278 */
+  --c-plum: 129 38 93;    /* #81265D */
+  --c-mauve: 199 160 201; /* #C7A0C9 */
+  --c-blush: 245 223 236; /* #F5DFEC */
+  --c-cream: 255 248 252; /* #FFF8FC */
+  --c-ink: 56 35 50;      /* #382332 */
+  --c-soft: 122 92 113;   /* texte secondaire, contraste AA sur blanc rosé */
+  --c-card: 255 255 255;
+  --c-line: 240 222 233;
+  color-scheme: light;
+}
+.dark {
+  --c-rasp: 232 121 178;
+  --c-plum: 214 150 196;
+  --c-mauve: 150 112 156;
+  --c-blush: 64 38 58;
+  --c-cream: 28 18 26;
+  --c-ink: 248 234 243;
+  --c-soft: 196 168 188;
+  --c-card: 40 27 37;
+  --c-line: 70 48 64;
+  color-scheme: dark;
+}
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-cream text-ink font-sans antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+.bg-app {
+  background:
+    radial-gradient(1200px 500px at 100% -10%, rgb(var(--c-blush) / 0.9), transparent 60%),
+    radial-gradient(900px 400px at -10% 110%, rgb(var(--c-mauve) / 0.18), transparent 60%),
+    rgb(var(--c-cream));
+}
+input, textarea, select, button { font: inherit; color: inherit; }
+/* iOS : une taille de 16px évite le zoom automatique à la saisie */
+input, textarea, select { font-size: 16px; }
+
+@layer components {
+  .card { @apply bg-card rounded-2xl shadow-soft border border-line/70; }
+  .h-title { @apply font-serif font-semibold text-plum tracking-tight; }
+  .label { @apply text-xs font-medium uppercase tracking-wider text-soft; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition active:scale-[0.97] disabled:opacity-50; }
+  .btn-primary { @apply btn text-white shadow-lift; background: linear-gradient(135deg, rgb(var(--c-rasp)), rgb(var(--c-plum))); }
+  .btn-soft { @apply btn bg-blush text-plum hover:bg-blush/70; }
+  .btn-ghost { @apply btn text-plum hover:bg-blush/60; }
+  .btn-danger { @apply btn bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300; }
+  .icon-btn { @apply inline-flex h-10 w-10 items-center justify-center rounded-full text-plum transition hover:bg-blush/70 active:scale-95; }
+  .input { @apply w-full rounded-xl border border-line bg-card px-3.5 py-2.5 outline-none transition placeholder:text-soft/60 focus:border-rasp/60 focus:ring-4 focus:ring-rasp/10; }
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-sm text-ink/80 transition active:scale-95; }
+  .chip-on { @apply border-transparent bg-rasp text-white; }
+  .seg { @apply flex rounded-full bg-blush/70 p-1; }
+  .seg > button { @apply flex-1 rounded-full px-3 py-1.5 text-sm font-medium text-plum/80 transition; }
+  .seg > button[aria-pressed='true'] { @apply bg-card text-plum shadow-soft; }
+}
+
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes sheet { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.anim-rise { animation: rise .35s ease-out both; }
+.anim-sheet { animation: sheet .28s cubic-bezier(.2,.9,.3,1) both; }
+.anim-fade { animation: fade .2s ease-out both; }
+.anim-pop { animation: pop .3s ease-out; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.masonry { column-gap: 0.9rem; columns: 2; }
+@media (min-width: 900px) { .masonry { columns: 3; } }
+@media (min-width: 1300px) { .masonry { columns: 4; } }
+.masonry > * { break-inside: avoid; margin-bottom: 0.9rem; }
