@@ -66,6 +66,37 @@ export const DEFAULT_TRACKERS: [string, string, string, string, Tracker['group']
   ['tr-voyage', 'Voyage', 'plane', '#3E9C9B', 'travail'],
 ];
 
+/** Ajoutés dans une mise à jour : la vie d'une jeune femme de 25 ans (amour, famille, santé, sorties…). */
+export const LIFE_TRACKERS: [string, string, string, string, Tracker['group']][] = [
+  ['tr-brunch', 'Brunch', 'croissant', '#C98A4B', 'sorties'],
+  ['tr-boite', 'Boîte', 'disc', '#8E6BB0', 'sorties'],
+  ['tr-concert', 'Concert / festival', 'mic', '#A83278', 'sorties'],
+  ['tr-expo', 'Expo / musée', 'landmark', '#5B6FB5', 'sorties'],
+  ['tr-shopping', 'Shopping', 'shopping-bag', '#E0789E', 'sorties'],
+  ['tr-date', 'Rencard', 'heart', '#E0457B', 'amour'],
+  ['tr-couple', 'Moment à deux', 'couple', '#D46A8C', 'amour'],
+  ['tr-match', 'Match / appli', 'match', '#C7A0C9', 'amour'],
+  ['tr-crush', 'Crush', 'sparkles', '#E0789E', 'amour'],
+  ['tr-ex', 'Contact avec un ex', 'heart-crack', '#9C8A96', 'amour'],
+  ['tr-famille', 'Repas de famille', 'home', '#C98A4B', 'social'],
+  ['tr-appel', 'Appel / FaceTime', 'phone', '#5B6FB5', 'social'],
+  ['tr-recevoir', 'Recevoir chez moi', 'sofa', '#8E6BB0', 'social'],
+  ['tr-anniv', 'Anniversaire', 'cake', '#A83278', 'social'],
+  ['tr-medecin', 'Rendez-vous santé', 'stethoscope', '#3E9C9B', 'sante'],
+  ['tr-malade', 'Malade', 'thermometer', '#9C8A96', 'sante'],
+  ['tr-eau', '1,5 L d’eau', 'droplets', '#3E9C9B', 'sante'],
+  ['tr-pas', '10 000 pas', 'footprints', '#4E9A6A', 'sante'],
+  ['tr-pilule', 'Pilule oubliée', 'pill', '#C0395A', 'sante'],
+  ['tr-craquage', 'Craquage shopping', 'shopping-bag', '#C0395A', 'moi'],
+  ['tr-nospend', 'Journée sans dépense', 'piggy', '#4E9A6A', 'moi'],
+  ['tr-detox', 'Détox réseaux', 'ban', '#4E9A6A', 'moi'],
+  ['tr-scroll', 'Trop scrollé', 'smartphone', '#9C8A96', 'moi'],
+  ['tr-journaling', 'Journaling', 'notebook-pen', '#A83278', 'soin'],
+  ['tr-creatif', 'Moment créatif', 'palette', '#8E6BB0', 'soin'],
+  ['tr-entretien', 'Entretien', 'briefcase', '#81265D', 'travail'],
+  ['tr-side', 'Side project', 'lightbulb', '#C9A13B', 'travail'],
+];
+
 /** Ajoutés dans une mise à jour : maison, soin de soi et études. */
 export const MORE_TRACKERS: [string, string, string, string, Tracker['group']][] = [
   ['tr-regles', 'Règles', 'drop', '#C0395A', 'cycle'],
@@ -120,6 +151,13 @@ export async function seedDefaults() {
       MORE_TRACKERS.map(([id, name, icon, color, group], i) => seedRec<Tracker>({ id, name, icon, color, group, order: 100 + i })),
     );
     await db.meta.put({ key: 'seededTrackers2', value: true });
+  }
+  if (!(await db.meta.get('seededTrackers3'))) {
+    await putSeed(
+      'trackers',
+      LIFE_TRACKERS.map(([id, name, icon, color, group], i) => seedRec<Tracker>({ id, name, icon, color, group, order: (group === 'sorties' ? 10 : 200) + i })),
+    );
+    await db.meta.put({ key: 'seededTrackers3', value: true });
   }
   if (!(await db.meta.get('seededPeople'))) {
     await putSeed(

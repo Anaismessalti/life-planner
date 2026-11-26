@@ -180,8 +180,8 @@ export interface Note extends BaseRecord {
   favorite: boolean;
 }
 
-export type TrackerForm = 'outing' | 'cafe' | 'work' | 'sport' | 'period' | 'pms' | 'rest' | 'travel' | 'spend' | 'simple';
-export type TrackerGroup = 'sorties' | 'moi' | 'cycle' | 'soin' | 'maison' | 'travail' | 'etudes' | 'autres';
+export type TrackerForm = 'outing' | 'cafe' | 'work' | 'sport' | 'period' | 'pms' | 'rest' | 'travel' | 'spend' | 'simple' | 'social' | 'sleep' | 'health' | 'sick';
+export type TrackerGroup = 'sorties' | 'amour' | 'social' | 'moi' | 'cycle' | 'sante' | 'soin' | 'maison' | 'travail' | 'etudes' | 'autres';
 
 /** Une activité ou un état à suivre au quotidien (sortie, verre, bureau, congé…). */
 export interface Tracker extends BaseRecord {
@@ -231,6 +231,29 @@ export interface DayLog extends BaseRecord {
   text?: string;
   /** États du jour, plusieurs possibles (HENDAYE, tired, in love…), avec une intensité de 1 à 3. */
   feelings?: { id: string; level: number }[];
+  /** Nuit précédant ce jour : coucher (la veille au soir), réveil (ce matin), qualité 1 à 4. */
+  sleep?: DaySleep;
+  /** Five Minute Journal : gratitude, intentions, affirmation (matin) ; 3 belles choses, à améliorer (soir). */
+  fmj?: FiveMinute;
+}
+
+export interface DaySleep {
+  bed?: HHmm;
+  wake?: HHmm;
+  /** 1 = nuit difficile … 4 = très bien dormi. */
+  quality?: number;
+  /** Réveils nocturnes, sieste, rêves… */
+  tags?: string[];
+}
+
+export interface FiveMinute {
+  grateful?: string[];
+  great?: string[];
+  affirmation?: string;
+  amazing?: string[];
+  better?: string;
+  /** Minutes de respiration / méditation guidée faites ce jour-là. */
+  breathe?: number;
 }
 
 export interface SettingRecord extends BaseRecord {

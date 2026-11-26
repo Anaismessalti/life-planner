@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ChevronLeft, ChevronRight, MapPin, TrendingDown, TrendingUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, Share, TrendingDown, TrendingUp } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Progress, Section, Segmented } from '../components/ui';
+import { Progress, Section, Segmented, toast } from '../components/ui';
 import { db } from '../db/db';
 import type { Contact, DayLog, ISODate, Tracker, TrackerGroup } from '../db/types';
 import { WEEKDAYS_SHORT, addDays, fmt, monthOf, range, weekStart } from '../lib/dates';
@@ -9,11 +9,16 @@ import { analyze, fmtPct, periodOf, shiftPeriod, trend, type Analytics, type Cou
 import { eur } from '../lib/finance';
 import { Icon } from '../lib/icons';
 import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
+import { SLEEP_QUALITY, fmtDuration } from '../lib/wellbeing';
+import { shareWrapped, wrappedCards } from '../lib/wrapped';
 
 const EMPTY: never[] = [];
 const GROUP_COLOR: Record<TrackerGroup, string> = {
   sorties: '#A83278',
+  amour: '#E0457B',
+  social: '#8E6BB0',
   moi: '#D46A8C',
+  sante: '#3E9C9B',
   cycle: '#C0395A',
   soin: '#E0789E',
   maison: '#C7A0C9',
@@ -78,6 +83,21 @@ function Delta({ cur, prev, unit = 'j' }: { cur: number; prev: number; unit?: st
   );
 }
 
+const EXTRA_TILES: [string, string][] = [
+  ['tr-date', 'Rencards'],
+  ['tr-couple', 'En amoureux'],
+  ['tr-famille', 'Famille'],
+  ['tr-brunch', 'Brunchs'],
+  ['tr-shopping', 'Shopping'],
+  ['tr-malade', 'Malade'],
+  ['tr-craquage', 'Craquages'],
+  ['tr-nospend', 'No spend days'],
+];
+const trackerCount = (x: Analytics, id: string): Count => {
+  const p = x.perTracker.find((r) => r.tracker.id === id);
+  return { days: p?.days || 0, freq: p?.freq || 0 };
+};
+
 type Metric = { id: string; label: string; fn: (a: Analytics) => number; format?: (v: number) => string; color: string };
 
 export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLog[]; trackers: Tracker[]; contacts: Contact[]; today: ISODate }) {
@@ -87,9 +107,12 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
   const [focus, setFocus] = useState<string | null>(null);
   const [metricId, setMetricId] = useState('outings');
   const expenses = useLiveQuery(() => db.expenses.toArray(), [], EMPTY);
+  const tasks = useLiveQuery(() => db.tasks.toArray(), [], EMPTY);
+  const categories = useLiveQuery(() => db.categories.toArray(), [], EMPTY);
   const period = useMemo(() => periodOf(kind, anchor), [kind, anchor]);
-  const a = useMemo(() => analyze(period, logs, trackers, contacts, expenses, today, group), [period, logs, trackers, contacts, expenses, today, group]);
-  const prev = useMemo(() => analyze(shiftPeriod(period, -1), logs, trackers, contacts, expenses, today, group), [period, logs, trackers, contacts, expenses, today, group]);
+  const agendaIn = useMemo(() => ({ tasks, categories }), [tasks, categories]);
+  const a = useMemo(() => analyze(period, logs, trackers, contacts, expenses, today, group, agendaIn), [period, logs, trackers, contacts, expenses, today, group, agendaIn]);
+  const prev = useMemo(() => analyze(shiftPeriod(period, -1), logs, trackers, contacts, expenses, today, group, agendaIn), [period, logs, trackers, contacts, expenses, today, group, agendaIn]);
   const isFuture = period.from > today;
   const usedGroups = GROUP_ORDER.filter((g) => trackers.some((t) => t.group === g));
 
@@ -101,6 +124,8 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
     { id: 'work', label: 'Travail', fn: (x) => x.key.work.days, color: '#81265D' },
     { id: 'sport', label: 'Sport', fn: (x) => x.key.sport.days, color: '#4E9A6A' },
     { id: 'social', label: 'Vie sociale', fn: (x) => x.key.social.days, color: '#8E6BB0' },
+    { id: 'sleep', label: 'Sommeil moy.', fn: (x) => Math.round(((x.sleep.avgMin || 0) / 60) * 10) / 10, format: (v) => `${String(v).replace('.', ',')}h`, color: '#5B6FB5' },
+    { id: 'fmj', label: 'Five Minute Journal', fn: (x) => x.fmj.days, color: '#E0789E' },
     { id: 'completion', label: 'Journal rempli', fn: (x) => Math.round(x.completion * 100), format: (v) => `${v}%`, color: '#C7A0C9' },
   ];
   const focusTracker = trackers.find((t) => t.id === focus);
@@ -126,6 +151,7 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
     { id: 'period', label: 'Règles', c: a.key.period, p: prev.key.period },
     { id: 'pms', label: 'SPM', c: a.key.pms, p: prev.key.pms },
     { id: 'social', label: 'Jours avec mes proches', c: a.key.social, p: prev.key.social },
+    ...EXTRA_TILES.map(([id, label]) => ({ id, label, c: trackerCount(a, id), p: trackerCount(prev, id) })),
   ].filter((t) => t.always || t.c.days || t.p.days);
 
   const moodTop = a.dominantMood ? MOODS[a.dominantMood - 1] : undefined;
@@ -265,6 +291,8 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
               </div>
             )}
           </Section>
+
+          <WellbeingSections a={a} prev={prev} />
 
           <Section title="Calendrier">
             <Heatmap a={a} today={today} focus={focus} trackers={trackers} />
@@ -428,6 +456,8 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
             </Section>
           )}
 
+          {a.agenda && a.agenda.events + a.agenda.tasks + a.agenda.upcoming > 0 && <AgendaSection a={a} />}
+
           {a.spent.total > 0 && (
             <Section title="Dépenses de mes journées">
               <div className="card space-y-1.5 p-3">
@@ -539,30 +569,188 @@ function Heatmap({ a, today, focus, trackers }: { a: Analytics; today: ISODate; 
   );
 }
 
-/** « Wrapped » de la période : quelques cartes à faire défiler, façon story. */
+/** « Wrapped » de la période : quelques cartes à faire défiler, façon story, et une image à partager. */
 function Wrapped({ a, prev }: { a: Analytics; prev: Analytics }) {
-  const mood = a.dominantMood ? MOODS[a.dominantMood - 1] : undefined;
-  const topAct = a.perTracker.find((p) => p.days > 0);
-  const who = a.people[0];
-  const where = a.places[0];
-  const cards: { k: string; big: ReactNode; small: string; bg: string }[] = [];
-  if (a.logged === 0) return null;
-  cards.push({ k: 'intro', big: a.period.label, small: `${a.logged} jour${a.logged > 1 ? 's' : ''} racontés · your life, wrapped`, bg: 'linear-gradient(140deg,#81265D,#A83278 60%,#E0789E)' });
-  if (mood) cards.push({ k: 'mood', big: <span className="italic">{mood.label}</span>, small: 'ton humeur dominante', bg: `linear-gradient(140deg,#382332,${mood.color})` });
-  if (a.key.outings.days) cards.push({ k: 'out', big: `${a.key.outings.days} sorties`, small: prev.key.outings.days ? `${a.key.outings.days >= prev.key.outings.days ? '+' : ''}${a.key.outings.days - prev.key.outings.days} vs la période précédente` : 'social era', bg: 'linear-gradient(140deg,#A83278,#8E6BB0)' });
-  if (who) cards.push({ k: 'who', big: who.contact.name, small: `ta personne n°1 · ${who.days} jour${who.days > 1 ? 's' : ''} ensemble`, bg: 'linear-gradient(140deg,#D46A8C,#81265D)' });
-  if (where) cards.push({ k: 'where', big: where.contact.name, small: `ton QG · ${where.days} fois`, bg: 'linear-gradient(140deg,#8E6BB0,#382332)' });
-  if (topAct) cards.push({ k: 'act', big: topAct.tracker.name, small: `ton activité n°1 · ${topAct.days} jours`, bg: `linear-gradient(140deg,${topAct.tracker.color},#382332)` });
-  cards.push({ k: 'hendaye', big: `HENDAYE × ${a.key.hendaye.days}`, small: a.key.hendaye.days ? 'lendemains qui piquent' : 'zéro lendemain difficile. Iconic.', bg: 'linear-gradient(140deg,#382332,#81265D)' });
-  if (a.spent.total) cards.push({ k: 'spent', big: eur(a.spent.total), small: 'dépensés en sorties et plaisirs', bg: 'linear-gradient(140deg,#C98A4B,#A83278)' });
+  const cards = wrappedCards(a, prev);
+  const [busy, setBusy] = useState(false);
+  if (!cards.length) return null;
+  const share = async () => {
+    setBusy(true);
+    try {
+      const r = await shareWrapped(cards, a.period.label);
+      if (r === 'downloaded') toast('Image enregistrée dans tes téléchargements');
+    } catch {
+      toast("L'image n'a pas pu être créée sur cet appareil");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0" data-testid="wrapped">
-      {cards.map((c) => (
-        <div key={c.k} className="flex h-44 w-[72%] shrink-0 snap-center flex-col justify-end rounded-3xl p-5 text-white shadow-lift sm:w-64" style={{ background: c.bg }}>
-          <div className="font-serif text-[30px] font-semibold leading-tight">{c.big}</div>
-          <div className="mt-1 text-xs uppercase tracking-[0.14em] text-white/80">{c.small}</div>
-        </div>
-      ))}
+    <div className="space-y-2">
+      <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0" data-testid="wrapped">
+        {cards.map((c) => (
+          <div key={c.k} className="flex h-44 w-[72%] shrink-0 snap-center flex-col justify-end rounded-3xl p-5 text-white shadow-lift sm:w-64" style={{ background: `linear-gradient(140deg,${c.from},${c.to})` }}>
+            <div className={`font-serif text-[30px] font-semibold leading-tight ${c.italic ? 'italic' : ''}`}>{c.big}</div>
+            <div className="mt-1 text-xs uppercase tracking-[0.14em] text-white/80">{c.small}</div>
+          </div>
+        ))}
+      </div>
+      <button className="btn-soft mx-auto flex items-center gap-2" onClick={share} disabled={busy} data-testid="wrapped-share">
+        <Share size={15} /> {busy ? 'Création de l’image…' : 'Partager mon Wrapped'}
+      </button>
     </div>
+  );
+}
+
+const n1 = (v?: number) => (v === undefined ? '–' : String(v).replace('.', ','));
+
+/** Sommeil et Five Minute Journal. */
+function WellbeingSections({ a, prev }: { a: Analytics; prev: Analytics }) {
+  const s = a.sleep;
+  const f = a.fmj;
+  return (
+    <>
+      {s.nights > 0 && (
+        <Section title="Mon sommeil">
+          <div className="card space-y-3 p-4" data-testid="sleep-stats">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="font-serif text-2xl font-semibold text-plum" data-testid="sleep-avg">
+                  {fmtDuration(s.avgMin)}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-soft">par nuit</div>
+              </div>
+              <div>
+                <div className="font-serif text-2xl font-semibold text-plum">{s.bedtime || '–'}</div>
+                <div className="text-[10px] uppercase tracking-wider text-soft">coucher moyen</div>
+              </div>
+              <div>
+                <div className="font-serif text-2xl font-semibold text-plum" data-testid="sleep-short">
+                  {s.short}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-soft">nuits &lt; 7 h</div>
+              </div>
+            </div>
+            <div className="flex h-3 overflow-hidden rounded-full bg-blush">
+              {s.quality.map((q) =>
+                q.nights ? <div key={q.value} style={{ width: `${(q.nights / Math.max(1, s.quality.reduce((n, x) => n + x.nights, 0))) * 100}%`, background: SLEEP_QUALITY[q.value - 1].color }} /> : null,
+              )}
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-soft">
+              {s.quality.map((q) => (
+                <span key={q.value} className="inline-flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: SLEEP_QUALITY[q.value - 1].color }} />
+                  <span className="font-serif italic">{SLEEP_QUALITY[q.value - 1].label}</span> {q.nights}
+                </span>
+              ))}
+            </div>
+            {s.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {s.tags.map(([t, n]) => (
+                  <span key={t} className="rounded-full bg-blush/70 px-2.5 py-1 text-xs text-plum">
+                    {t} · {n}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-[11px] text-soft">
+              {s.nights} nuit{s.nights > 1 ? 's' : ''} notée{s.nights > 1 ? 's' : ''}
+              {s.avgQuality ? ` · qualité ${n1(s.avgQuality)}/4` : ''}
+              {prev.sleep.avgMin ? ` · période préc. ${fmtDuration(prev.sleep.avgMin)}` : ''}. La nuit compte pour le jour où tu te réveilles.
+            </p>
+          </div>
+        </Section>
+      )}
+      {f.days > 0 && (
+        <Section title="Five Minute Journal">
+          <div className="card space-y-3 p-4" data-testid="fmj-stats">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="font-serif text-2xl font-semibold text-plum" data-testid="fmj-days">
+                  {f.days}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-soft">jours · {fmtPct(f.days / Math.max(1, a.elapsed))}</div>
+              </div>
+              <div>
+                <div className="font-serif text-2xl font-semibold text-plum">{f.gratitudes}</div>
+                <div className="text-[10px] uppercase tracking-wider text-soft">gratitudes</div>
+              </div>
+              <div>
+                <div className="font-serif text-2xl font-semibold text-plum">{f.breathe}</div>
+                <div className="text-[10px] uppercase tracking-wider text-soft">min à respirer</div>
+              </div>
+            </div>
+            <p className="text-[11px] text-soft">
+              Morning {f.mornings} fois · Evening {f.evenings} fois
+            </p>
+            {f.recent.length > 0 && (
+              <div className="space-y-1.5 border-t border-line/60 pt-2">
+                <div className="label">Petits bonheurs</div>
+                {f.recent.map((r, i) => (
+                  <div key={i} className="flex gap-2 text-sm">
+                    <span className="w-12 shrink-0 text-[11px] text-soft">{fmt(r.date, 'd MMM')}</span>
+                    <span className="font-serif italic text-plum">{r.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Section>
+      )}
+    </>
+  );
+}
+
+/** Ce que j'avais prévu : rendez-vous et tâches de l'agenda sur la période. */
+function AgendaSection({ a }: { a: Analytics }) {
+  const g = a.agenda!;
+  return (
+    <Section title="Mon agenda">
+      <div className="card space-y-3 p-4" data-testid="agenda-stats">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <div className="font-serif text-2xl font-semibold text-plum" data-testid="agenda-events">
+              {g.events}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-soft">rendez-vous</div>
+          </div>
+          <div>
+            <div className="font-serif text-2xl font-semibold text-plum" data-testid="agenda-done">
+              {g.done}/{g.tasks}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-soft">tâches faites</div>
+          </div>
+          <div>
+            <div className="font-serif text-2xl font-semibold text-plum">{g.upcoming}</div>
+            <div className="text-[10px] uppercase tracking-wider text-soft">rdv à venir</div>
+          </div>
+        </div>
+        {g.tasks > 0 && <Progress value={g.doneRate * 100} />}
+        <p className="text-[11px] text-soft">
+          {fmtPct(g.doneRate)} des tâches prévues jusqu'à aujourd'hui sont faites
+          {g.postponed ? ` · ${g.postponed} reportée${g.postponed > 1 ? 's' : ''}` : ''} · {g.eventDays} jour{g.eventDays > 1 ? 's' : ''} avec au moins un rendez-vous ({fmtPct(g.eventDays / Math.max(1, a.elapsed))}).
+        </p>
+        {g.byCategory.length > 0 && (
+          <div className="space-y-1.5 border-t border-line/60 pt-2">
+            {g.byCategory.slice(0, 8).map((c) => (
+              <div key={c.id} className="flex items-center gap-2 text-sm">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.color }} />
+                <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                <span className="text-xs text-soft">
+                  {c.events ? `${c.events} rdv` : ''}
+                  {c.events && c.tasks ? ' · ' : ''}
+                  {c.tasks ? `${c.tasks} tâche${c.tasks > 1 ? 's' : ''}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {g.moodWithEvents !== undefined && g.moodWithout !== undefined && (
+          <p className="rounded-xl bg-blush/50 px-3 py-2 text-xs text-plum" data-testid="agenda-mood">
+            Humeur moyenne les jours avec rendez-vous : <b>{n1(g.moodWithEvents)}/5</b> · sans : <b>{n1(g.moodWithout)}/5</b>
+          </p>
+        )}
+      </div>
+    </Section>
   );
 }

@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Check, ChevronLeft, ChevronRight, MapPin, Plus, Settings as Cog, Trash2, User } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, MapPin, Plus, Settings as Cog, Trash2, User } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Section, Segmented, toast } from '../components/ui';
 import { create, db, upsert } from '../db/db';
@@ -9,7 +9,8 @@ import { eur, parseAmount } from '../lib/finance';
 import { useToday } from '../lib/hooks';
 import { COLORS, Icon } from '../lib/icons';
 import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
-import { FEELINGS, FORMS, formOf, setJournalExpense } from '../lib/lifeforms';
+import { FEELINGS, FEELING_BY_ID, FEELING_GROUPS, FORMS, formOf, setJournalExpense } from '../lib/lifeforms';
+import { FiveMinuteCard, SleepCard } from './JournalWell';
 import { navigate, useRoute } from '../lib/ui-store';
 import { AnalyticsView } from './Analytics';
 
@@ -95,9 +96,10 @@ export function MoodPicker({ date, value, size = 'md' }: { date: ISODate; value?
   );
 }
 
-/** États du jour : plusieurs à la fois. Toucher une fois = léger, deux fois = moyen, trois = fort, quatre = retiré. */
+/** États du jour : plusieurs à la fois, rangés par familles. Toucher une fois = léger, deux = moyen, trois = fort, quatre = retiré. */
 export function FeelingsPicker({ date, value }: { date: ISODate; value?: DayLog['feelings'] }) {
   const cur = value || [];
+  const [tab, setTab] = useState(FEELING_GROUPS[0].id);
   const tap = (id: string) =>
     saveLog(date, (log) => {
       const list = log.feelings || [];
@@ -106,33 +108,57 @@ export function FeelingsPicker({ date, value }: { date: ISODate; value?: DayLog[
       if (f.level >= 3) return { feelings: list.filter((x) => x.id !== id) };
       return { feelings: list.map((x) => (x.id === id ? { ...x, level: x.level + 1 } : x)) };
     });
+  const chip = (f: (typeof FEELINGS)[number], testid: string) => {
+    const on = cur.find((x) => x.id === f.id);
+    return (
+      <button
+        key={f.id}
+        onClick={() => tap(f.id)}
+        className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 py-1.5 transition active:scale-95 ${on ? 'text-white shadow-soft' : 'bg-blush/60 text-plum'} ${
+          f.id === 'hendaye' ? 'text-[12px] font-semibold tracking-[0.12em]' : 'font-serif text-[15px] italic'
+        }`}
+        style={on ? { background: f.color } : undefined}
+        aria-pressed={!!on}
+        aria-label={`${f.label}${on ? `, intensité ${on.level} sur 3` : ''}`}
+        data-testid={testid}
+      >
+        {f.label}
+        {on && (
+          <span className="flex gap-0.5" aria-hidden>
+            {[1, 2, 3].map((i) => (
+              <span key={i} className={`h-1.5 w-1.5 rounded-full bg-white ${i <= on.level ? '' : 'opacity-30'}`} />
+            ))}
+          </span>
+        )}
+      </button>
+    );
+  };
+  const selected = cur.map((c) => FEELING_BY_ID.get(c.id)).filter((f): f is (typeof FEELINGS)[number] => !!f && f.group !== tab);
   return (
-    <div className="flex flex-wrap gap-1.5" data-testid="feelings">
-      {FEELINGS.map((f) => {
-        const on = cur.find((x) => x.id === f.id);
-        return (
-          <button
-            key={f.id}
-            onClick={() => tap(f.id)}
-            className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 py-1.5 transition active:scale-95 ${on ? 'text-white shadow-soft' : 'bg-blush/60 text-plum'} ${
-              f.id === 'hendaye' ? 'text-[12px] font-semibold tracking-[0.12em]' : 'font-serif text-[15px] italic'
-            }`}
-            style={on ? { background: f.color } : undefined}
-            aria-pressed={!!on}
-            aria-label={`${f.label}${on ? `, intensité ${on.level} sur 3` : ''}`}
-            data-testid={`feeling-${f.id}`}
-          >
-            {f.label}
-            {on && (
-              <span className="flex gap-0.5" aria-hidden>
-                {[1, 2, 3].map((i) => (
-                  <span key={i} className={`h-1.5 w-1.5 rounded-full bg-white ${i <= on.level ? '' : 'opacity-30'}`} />
-                ))}
-              </span>
-            )}
-          </button>
-        );
-      })}
+    <div className="space-y-2" data-testid="feelings">
+      <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+        {FEELING_GROUPS.map((g) => {
+          const n = cur.filter((c) => FEELING_BY_ID.get(c.id)?.group === g.id).length;
+          return (
+            <button
+              key={g.id}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${tab === g.id ? 'bg-plum text-white' : 'text-soft hover:text-plum'}`}
+              onClick={() => setTab(g.id)}
+              data-testid={`feelings-tab-${g.id}`}
+            >
+              {g.label}
+              {n > 0 && <span className={`ml-1 ${tab === g.id ? 'text-white/80' : 'text-rasp'}`}>· {n}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-1.5">{FEELINGS.filter((f) => f.group === tab).map((f) => chip(f, `feeling-${f.id}`))}</div>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-line/60 pt-2">
+          <span className="text-[11px] text-soft">Aussi aujourd'hui :</span>
+          {selected.map((f) => chip(f, `feeling-on-${f.id}`))}
+        </div>
+      )}
     </div>
   );
 }
@@ -177,7 +203,7 @@ export function JournalPage() {
       />
 
       {tab === 'day' ? (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
           <DayEditor date={date} setDate={setDate} today={today} log={log} trackers={trackers} contacts={contacts} />
           <MonthCalendar
             logs={logs}
@@ -208,6 +234,9 @@ function itemSummary(it: DayItem, t: Tracker, names: Map<string, string>, amount
   if (it.detail) bits.push(it.detail);
   return bits.filter(Boolean).join(', ');
 }
+
+const OPEN_KEY = 'lp-journal-open-groups';
+const DEFAULT_OPEN = ['sorties', 'moi', 'cycle', 'travail', 'maison', 'soin'];
 
 function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: ISODate; setDate: (d: ISODate) => void; today: ISODate; log?: DayLog; trackers: Tracker[]; contacts: Contact[] }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -260,6 +289,26 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
     await setJournalExpense(date, t, undefined, undefined, contacts);
     setEditing(null);
   };
+  const [open, setOpen] = useState<string[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(OPEN_KEY) || 'null');
+      if (Array.isArray(v)) return v;
+    } catch {
+      /* stockage indisponible : valeurs par défaut */
+    }
+    return DEFAULT_OPEN;
+  });
+  const isOpen = (g: string) => open.includes(g);
+  const toggleGroup = (g: string) => {
+    const next = isOpen(g) ? open.filter((x) => x !== g) : [...open, g];
+    setOpen(next);
+    try {
+      localStorage.setItem(OPEN_KEY, JSON.stringify(next));
+    } catch {
+      /* rien */
+    }
+  };
+  const countIn = (list: Tracker[]) => list.filter((t) => items.some((i) => i.trackerId === t.id)).length;
   const groups = GROUP_ORDER.map((g) => ({ g, list: trackers.filter((t) => (t.group || 'autres') === g) })).filter((x) => x.list.length);
   const filled = items.filter((i) => trackers.some((t) => t.id === i.trackerId)).length;
 
@@ -301,11 +350,21 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
         <FeelingsPicker date={date} value={log?.feelings} />
       </div>
 
+      <SleepCard date={date} value={log?.sleep} />
+
+      <FiveMinuteCard key={date} date={date} value={log?.fmj} today={today} />
+
       {groups.map(({ g, list }) => (
         <div key={g} className="space-y-2">
-          <div className="label">{GROUP_LABEL[g]}</div>
+          <button className="flex w-full items-center justify-between gap-2 text-left" onClick={() => toggleGroup(g)} aria-expanded={isOpen(g)} data-testid={`group-${g}`}>
+            <span className="label">
+              {GROUP_LABEL[g]}
+              {!isOpen(g) && countIn(list) > 0 && <span className="ml-1 normal-case tracking-normal text-rasp">· {countIn(list)}</span>}
+            </span>
+            <ChevronDown size={15} className={`text-soft transition ${isOpen(g) ? 'rotate-180' : ''}`} />
+          </button>
           <div className="flex flex-wrap gap-2">
-            {list.map((t) => {
+            {list.filter((t) => isOpen(g) || items.some((i) => i.trackerId === t.id)).map((t) => {
               const it = items.find((i) => i.trackerId === t.id);
               const sum = it ? itemSummary(it, t, names, amounts.get(t.id)) : '';
               return (

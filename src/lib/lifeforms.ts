@@ -50,6 +50,25 @@ export const FORMS: Record<TrackerForm, FormSpec> = {
     comment: 'Commentaire',
   },
   spend: { label: 'Achat (dépense)', amount: true, comment: 'Commentaire' },
+  social: { label: 'Famille, amis (avec qui, où)', people: true, places: true, comment: 'Commentaire' },
+  sleep: {
+    label: 'Sommeil (qualité)',
+    level: { label: 'Ma nuit', options: ['Nuit blanche', 'Mal dormi', 'Correcte', 'Très bien dormi'] },
+    tags: { label: 'Détails', options: ['Réveils', 'Insomnie', 'Cauchemars', 'Grasse mat’', 'Couchée tard', 'Sieste'] },
+    comment: 'Commentaire',
+  },
+  health: {
+    label: 'Rendez-vous santé (type, dépense)',
+    tags: { label: 'Type', options: ['Généraliste', 'Gynéco', 'Dentiste', 'Dermato', 'Psy', 'Kiné', 'Ophtalmo', 'Prise de sang', 'Pharmacie'] },
+    amount: true,
+    comment: 'Ce qu’il faut retenir…',
+  },
+  sick: {
+    label: 'Malade (symptômes, intensité)',
+    tags: { label: 'Symptômes', options: ['Rhume', 'Mal de gorge', 'Fièvre', 'Migraine', 'Gastro', 'Toux', 'Allergie', 'Mal au ventre'] },
+    level: { label: 'Intensité', options: ['Légère', 'Moyenne', 'Forte'] },
+    comment: 'Commentaire',
+  },
   simple: { label: 'Simple (commentaire)', comment: 'Commentaire (facultatif)' },
 };
 
@@ -73,6 +92,25 @@ const DEFAULT_FORM: Record<string, TrackerForm> = {
   'tr-courses': 'spend',
   'tr-regles': 'period',
   'tr-spm': 'pms',
+  'tr-brunch': 'outing',
+  'tr-boite': 'outing',
+  'tr-concert': 'outing',
+  'tr-expo': 'outing',
+  'tr-shopping': 'outing',
+  'tr-date': 'outing',
+  'tr-couple': 'outing',
+  'tr-match': 'simple',
+  'tr-crush': 'simple',
+  'tr-ex': 'simple',
+  'tr-famille': 'social',
+  'tr-appel': 'social',
+  'tr-recevoir': 'social',
+  'tr-anniv': 'outing',
+  'tr-medecin': 'health',
+  'tr-malade': 'sick',
+  'tr-craquage': 'spend',
+  'tr-entretien': 'work',
+  'tr-side': 'work',
 };
 
 export function formOf(t: Pick<Tracker, 'id' | 'group' | 'form'>): TrackerForm {
@@ -83,6 +121,8 @@ export function formOf(t: Pick<Tracker, 'id' | 'group' | 'form'>): TrackerForm {
 export function budgetCategoryFor(t: Pick<Tracker, 'id' | 'group' | 'form'>): string {
   if (t.id === 'tr-diner') return 'bc-restaurants';
   if (t.id === 'tr-courses') return 'bc-courses';
+  if (t.id === 'tr-shopping' || t.id === 'tr-craquage') return 'bc-shopping';
+  if (t.id === 'tr-medecin') return 'bc-sport';
   const f = formOf(t);
   if (f === 'travel') return 'bc-voyages';
   if (f === 'outing' || f === 'cafe') return 'bc-sorties';
@@ -110,26 +150,52 @@ export async function setJournalExpense(date: ISODate, t: Tracker, amount: numbe
   await upsert<Expense>('expenses', { id, amount, date, note, budgetCategoryId, journal: { date, trackerId: t.id } });
 }
 
-/** États du jour : plusieurs par jour, avec une intensité (toucher à nouveau pour l'augmenter). */
-export const FEELINGS: { id: string; label: string; color: string }[] = [
-  { id: 'hendaye', label: 'HENDAYE', color: '#81265D' },
-  { id: 'tired', label: 'tired', color: '#9C8A96' },
-  { id: 'stressed', label: 'stressed', color: '#C9A13B' },
-  { id: 'anxious', label: 'anxious', color: '#8E6BB0' },
-  { id: 'sad', label: 'sad', color: '#5B6FB5' },
-  { id: 'irritated', label: 'irritated', color: '#C0395A' },
-  { id: 'sick', label: 'sick', color: '#3E9C9B' },
-  { id: 'lonely', label: 'lonely', color: '#9C8A96' },
-  { id: 'emotional', label: 'emotional', color: '#C7A0C9' },
-  { id: 'cozy', label: 'cozy', color: '#C98A4B' },
-  { id: 'peaceful', label: 'peaceful', color: '#4E9A6A' },
-  { id: 'grateful', label: 'grateful', color: '#D46A8C' },
-  { id: 'motivated', label: 'motivated', color: '#A83278' },
-  { id: 'productive', label: 'productive', color: '#81265D' },
-  { id: 'confident', label: 'confident', color: '#A83278' },
-  { id: 'inspired', label: 'inspired', color: '#E0789E' },
-  { id: 'in-love', label: 'in love', color: '#E0457B' },
-  { id: 'social', label: 'social butterfly', color: '#D46A8C' },
+/** États du jour : plusieurs par jour, avec une intensité (toucher à nouveau pour l'augmenter), rangés par famille. */
+export const FEELING_GROUPS: { id: string; label: string }[] = [
+  { id: 'body', label: 'Corps' },
+  { id: 'energy', label: 'Énergie' },
+  { id: 'mind', label: 'Tête' },
+  { id: 'heart', label: 'Cœur' },
+  { id: 'vibes', label: 'Vibes' },
+  { id: 'low', label: 'Moins bien' },
+];
+export const FEELINGS: { id: string; label: string; color: string; group: string }[] = [
+  { id: 'hendaye', label: 'HENDAYE', color: '#81265D', group: 'body' },
+  { id: 'sick', label: 'sick', color: '#3E9C9B', group: 'body' },
+  { id: 'bloated', label: 'bloated', color: '#C7A0C9', group: 'body' },
+  { id: 'sore', label: 'sore', color: '#9C8A96', group: 'body' },
+  { id: 'pretty', label: 'feeling pretty', color: '#E0789E', group: 'body' },
+  { id: 'energized', label: 'energized', color: '#C9A13B', group: 'energy' },
+  { id: 'tired', label: 'tired', color: '#9C8A96', group: 'energy' },
+  { id: 'drained', label: 'drained', color: '#5B6FB5', group: 'energy' },
+  { id: 'lazy', label: 'lazy girl day', color: '#C7A0C9', group: 'energy' },
+  { id: 'focused', label: 'focused', color: '#81265D', group: 'mind' },
+  { id: 'productive', label: 'productive', color: '#81265D', group: 'mind' },
+  { id: 'motivated', label: 'motivated', color: '#A83278', group: 'mind' },
+  { id: 'inspired', label: 'inspired', color: '#E0789E', group: 'mind' },
+  { id: 'foggy', label: 'brain fog', color: '#9C8A96', group: 'mind' },
+  { id: 'overwhelmed', label: 'overwhelmed', color: '#C9A13B', group: 'mind' },
+  { id: 'stressed', label: 'stressed', color: '#C9A13B', group: 'mind' },
+  { id: 'in-love', label: 'in love', color: '#E0457B', group: 'heart' },
+  { id: 'butterflies', label: 'butterflies', color: '#E0789E', group: 'heart' },
+  { id: 'loved', label: 'loved', color: '#D46A8C', group: 'heart' },
+  { id: 'missing', label: 'missing someone', color: '#8E6BB0', group: 'heart' },
+  { id: 'heartbroken', label: 'heartbroken', color: '#5B6FB5', group: 'heart' },
+  { id: 'jealous', label: 'jealous', color: '#4E9A6A', group: 'heart' },
+  { id: 'confident', label: 'confident', color: '#A83278', group: 'vibes' },
+  { id: 'social', label: 'social butterfly', color: '#D46A8C', group: 'vibes' },
+  { id: 'cozy', label: 'cozy', color: '#C98A4B', group: 'vibes' },
+  { id: 'peaceful', label: 'peaceful', color: '#4E9A6A', group: 'vibes' },
+  { id: 'grateful', label: 'grateful', color: '#D46A8C', group: 'vibes' },
+  { id: 'nostalgic', label: 'nostalgic', color: '#8E6BB0', group: 'vibes' },
+  { id: 'free', label: 'free', color: '#3E9C9B', group: 'vibes' },
+  { id: 'sad', label: 'sad', color: '#5B6FB5', group: 'low' },
+  { id: 'anxious', label: 'anxious', color: '#8E6BB0', group: 'low' },
+  { id: 'irritated', label: 'irritated', color: '#C0395A', group: 'low' },
+  { id: 'lonely', label: 'lonely', color: '#9C8A96', group: 'low' },
+  { id: 'emotional', label: 'emotional', color: '#C7A0C9', group: 'low' },
+  { id: 'insecure', label: 'insecure', color: '#9C8A96', group: 'low' },
+  { id: 'bored', label: 'bored', color: '#9C8A96', group: 'low' },
 ];
 export const FEELING_BY_ID = new Map(FEELINGS.map((f) => [f.id, f]));
 

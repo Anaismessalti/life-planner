@@ -128,13 +128,11 @@ export async function runRollover(today: ISODate = todayISO()): Promise<Rollover
   // et uniquement si la prochaine occurrence n'est pas déjà aujourd'hui ou avant.
   const windowStart = lastRun ? addDays(lastRun, -1) : addDays(today, -31);
   const yesterday = addDays(today, -1);
+  const carriedSeries = new Set(all.filter((t) => t.seriesId && !t.deleted && t.status !== 'done' && isPostponed(t)).map((t) => t.seriesId!));
   for (const s of all) {
     if (s.deleted || !isSeries(s) || s.kind !== 'task' || s.autoPostpone === false || !s.date) continue;
     // Une seule occurrence reportée en attente par série : pas d'accumulation.
-    const carried = all.some(
-      (t) => t.seriesId === s.id && !t.deleted && t.status !== 'done' && isPostponed(t),
-    );
-    if (carried) continue;
+    if (carriedSeries.has(s.id)) continue;
     const missed = occurrences(s.date, s.recurrence!, windowStart, yesterday).filter((d) => !byId.has(occurrenceId(s.id, d)));
     const last = missed[missed.length - 1];
     if (!last) continue;

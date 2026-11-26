@@ -27,11 +27,19 @@ export function occurrences(start: ISODate, rec: Recurrence, from: ISODate, to: 
       break;
     }
     case 'weekly': {
-      const days = rec.byWeekday && rec.byWeekday.length ? rec.byWeekday : [weekday(start)];
+      // On saute directement de semaine valide en semaine valide (au lieu de tester chaque jour).
+      const days = [...new Set(rec.byWeekday && rec.byWeekday.length ? rec.byWeekday : [weekday(start)])].map((w) => (w + 6) % 7).sort((a, b) => a - b);
       const ws0 = weekStart(start);
-      for (let d = lo; d <= end; d = addDays(d, 1)) {
-        const weekIdx = Math.round(diffDays(weekStart(d), ws0) / 7);
-        if (weekIdx % interval === 0 && days.includes(weekday(d))) out.push(d);
+      const weeksToLo = Math.floor(diffDays(weekStart(lo), ws0) / 7);
+      let w = Math.max(0, Math.floor(weeksToLo / interval) * interval);
+      for (; ; w += interval) {
+        const ws = addDays(ws0, w * 7);
+        if (ws > end) break;
+        for (const off of days) {
+          const d = addDays(ws, off);
+          if (d > end) break;
+          if (d >= lo) out.push(d);
+        }
       }
       break;
     }
@@ -66,8 +74,13 @@ export function occurrences(start: ISODate, rec: Recurrence, from: ISODate, to: 
 
 /** Prochaine occurrence strictement après `after`. */
 export function nextOccurrence(start: ISODate, rec: Recurrence, after: ISODate): ISODate | undefined {
-  const horizon = addDays(after, 800);
-  return occurrences(start, rec, addDays(after, 1), horizon)[0];
+  // Fenêtres de plus en plus larges : la plupart des séries trouvent leur prochaine date dans le mois.
+  const from = addDays(after, 1);
+  for (const span of [40, 400, 800]) {
+    const hit = occurrences(start, rec, from, addDays(after, span))[0];
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 /** Convertit une fréquence financière en récurrence. */

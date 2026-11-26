@@ -1,8 +1,10 @@
 // Life Analytics : statistiques de fréquence et de répartition calculées à partir du journal.
 // Rien n'est chronométré : on compte des JOURNÉES et des ACTIVITÉS, jamais du temps passé.
-import type { Contact, DayLog, Expense, ISODate, Tracker, TrackerGroup } from '../db/types';
+import type { Category, Contact, DayLog, Expense, ISODate, Task, Tracker, TrackerGroup } from '../db/types';
 import { addDays, addMonths, diffDays, fmt, fmtMonth, monthEnd, monthOf, monthStart, range, weekStart } from './dates';
 import { FEELINGS, formOf } from './lifeforms';
+import { expandTasks } from './tasks';
+import { avgBedtime, eveningDone, morningDone, sleepMinutes } from './wellbeing';
 
 export type PeriodKind = 'week' | 'month' | 'year';
 export interface Period {
@@ -81,13 +83,82 @@ export interface Analytics {
   places: { contact: Contact; days: number }[];
   spent: { total: number; byTracker: { tracker: Tracker; amount: number }[] };
   byDate: Map<ISODate, DayLog>;
+  sleep: { nights: number; avgMin?: number; avgQuality?: number; short: number; bedtime?: string; quality: { value: number; nights: number }[]; tags: [string, number][] };
+  fmj: { mornings: number; evenings: number; days: number; gratitudes: number; breathe: number; recent: { date: ISODate; text: string }[] };
+  /** Ce qui était prévu dans l'agenda (tâches et rendez-vous) sur la période. */
+  agenda?: {
+    events: number;
+    eventDays: number;
+    upcoming: number;
+    tasks: number;
+    done: number;
+    doneRate: number;
+    postponed: number;
+    byCategory: { id: string; name: string; color: string; events: number; tasks: number }[];
+    moodWithEvents?: number;
+    moodWithout?: number;
+  };
+}
+
+export interface AgendaInput {
+  tasks: Task[];
+  categories: Category[];
+}
+
+const avg1 = (v: number[]) => (v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : undefined);
+
+export function agendaStats(period: Period, end: ISODate, input: AgendaInput, byDate: Map<ISODate, DayLog>): Analytics['agenda'] {
+  const all = expandTasks(input.tasks, period.from, period.to);
+  const cats = new Map(input.categories.filter((c) => !c.deleted).map((c) => [c.id, c]));
+  const past = all.filter((t) => t.date! <= end);
+  const events = past.filter((t) => t.kind === 'event');
+  const tasks = past.filter((t) => t.kind === 'task');
+  const done = tasks.filter((t) => t.status === 'done').length;
+  const eventDays = new Set(events.map((e) => e.date!));
+  const byCat = new Map<string, { id: string; name: string; color: string; events: number; tasks: number }>();
+  for (const t of past) {
+    const c = t.categoryId ? cats.get(t.categoryId) : undefined;
+    const id = c?.id || '_none';
+    const row = byCat.get(id) || { id, name: c?.name || 'Sans catégorie', color: c?.color || '#C7A0C9', events: 0, tasks: 0 };
+    if (t.kind === 'event') row.events++;
+    else row.tasks++;
+    byCat.set(id, row);
+  }
+  const moodsWith: number[] = [];
+  const moodsWithout: number[] = [];
+  for (const [d, l] of byDate) {
+    if (typeof l.mood !== 'number' || l.mood < 1) continue;
+    (eventDays.has(d) ? moodsWith : moodsWithout).push(l.mood);
+  }
+  return {
+    events: events.length,
+    eventDays: eventDays.size,
+    upcoming: all.filter((t) => t.kind === 'event' && t.date! > end).length,
+    tasks: tasks.length,
+    done,
+    doneRate: pct(done, tasks.length),
+    postponed: past.filter((t) => (t.postponeHistory?.length || 0) > 0).length,
+    byCategory: [...byCat.values()].sort((a, b) => b.events + b.tasks - (a.events + a.tasks)),
+    moodWithEvents: avg1(moodsWith),
+    moodWithout: avg1(moodsWithout),
+  };
 }
 
 const pct = (a: number, b: number) => (b > 0 ? a / b : 0);
 
-/** Un jour compte comme « renseigné » dès qu'il contient une note, un état, une activité ou un texte. */
+/** Un jour compte comme « renseigné » dès qu'il contient une note, un état, une activité, un texte, sa nuit ou son Five Minute Journal. */
 export function isLogged(l: DayLog) {
-  return !l.deleted && (l.items.length > 0 || (typeof l.mood === 'number' && l.mood >= 1) || (l.feelings?.length || 0) > 0 || !!l.text?.trim());
+  return (
+    !l.deleted &&
+    (l.items.length > 0 ||
+      (typeof l.mood === 'number' && l.mood >= 1) ||
+      (l.feelings?.length || 0) > 0 ||
+      !!l.text?.trim() ||
+      sleepMinutes(l.sleep) !== undefined ||
+      !!l.sleep?.quality ||
+      morningDone(l.fmj) ||
+      eveningDone(l.fmj))
+  );
 }
 
 export function analyze(
@@ -98,6 +169,7 @@ export function analyze(
   expenses: Expense[],
   today: ISODate,
   groupFilter?: TrackerGroup | null,
+  agenda?: AgendaInput,
 ): Analytics {
   const end = period.to < today ? period.to : today;
   const elapsed = end >= period.from ? diffDays(end, period.from) + 1 : 0;
@@ -170,7 +242,7 @@ export function analyze(
     })
     .sort((a, b) => b.days - a.days || a.tracker.order - b.tracker.order);
 
-  const groups: TrackerGroup[] = ['sorties', 'moi', 'cycle', 'soin', 'maison', 'travail', 'etudes', 'autres'];
+  const groups: TrackerGroup[] = ['sorties', 'amour', 'social', 'moi', 'cycle', 'sante', 'soin', 'maison', 'travail', 'etudes', 'autres'];
   const perGroup = Object.fromEntries(groups.map((g) => [g, c(gDays.get(g))])) as Record<TrackerGroup, Count>;
 
   const moodVals = inP.map((l) => l.mood).filter((m): m is number => typeof m === 'number' && m >= 1 && m <= 5);
@@ -192,9 +264,39 @@ export function analyze(
       .sort((a, b) => b.days - a.days || a.contact.order - b.contact.order);
   const sortMap = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]);
 
+  // Sommeil : une nuit compte si la durée ou la qualité est renseignée.
+  const nights = inP.filter((l) => l.sleep && (sleepMinutes(l.sleep) !== undefined || l.sleep.quality));
+  const mins = nights.map((l) => sleepMinutes(l.sleep)).filter((m): m is number => m !== undefined);
+  const qual = nights.map((l) => l.sleep!.quality).filter((q): q is number => typeof q === 'number' && q >= 1 && q <= 4);
+  const sleepTags = new Map<string, number>();
+  for (const l of nights) for (const t of l.sleep!.tags || []) sleepTags.set(t, (sleepTags.get(t) || 0) + 1);
+  const fmjDays = inP.filter((l) => morningDone(l.fmj) || eveningDone(l.fmj));
+  const recent = [...fmjDays]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .flatMap((l) => [...(l.fmj?.grateful || []), ...(l.fmj?.amazing || [])].filter((x) => x?.trim()).map((text) => ({ date: l.date, text: text.trim() })))
+    .slice(0, 6);
+
   return {
     period,
     elapsed,
+    sleep: {
+      nights: nights.length,
+      avgMin: mins.length ? Math.round(mins.reduce((a, b) => a + b, 0) / mins.length) : undefined,
+      avgQuality: avg1(qual),
+      short: mins.filter((m) => m < 7 * 60).length,
+      bedtime: avgBedtime(nights.map((l) => l.sleep!.bed || '')),
+      quality: [1, 2, 3, 4].map((v) => ({ value: v, nights: qual.filter((q) => q === v).length })),
+      tags: sortMap(sleepTags),
+    },
+    fmj: {
+      mornings: fmjDays.filter((l) => morningDone(l.fmj)).length,
+      evenings: fmjDays.filter((l) => eveningDone(l.fmj)).length,
+      days: fmjDays.length,
+      gratitudes: fmjDays.reduce((n, l) => n + (l.fmj?.grateful || []).filter((x) => x?.trim()).length, 0),
+      breathe: inP.reduce((n, l) => n + (l.fmj?.breathe || 0), 0),
+      recent,
+    },
+    agenda: agenda ? agendaStats(period, end, agenda, byDate) : undefined,
     logged,
     completion: pct(logged, elapsed),
     totalActivities: total,

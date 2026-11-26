@@ -1,6 +1,7 @@
 import { quoteOfDay } from '../lib/quotes';
 import { BookHeart, CalendarClock, Settings as Cog, Sparkles } from 'lucide-react';
-import { MoodPicker, useDayLogs } from './Journal';
+import { MoodPicker, useContacts, useDayLogs, useTrackers } from './Journal';
+import { EventSuggestions, FmjNudge, HabitsRow } from '../components/TodayJournal';
 import { MOODS } from '../lib/journal';
 import { useMemo, useState } from 'react';
 import { PaymentsList, Planning, PriorityBoard, TaskList, type DayCtx } from '../components/DayViews';
@@ -55,6 +56,8 @@ export function TodayPage() {
   const payments = financeOccurrencesIn(finance, today, today);
 
   const logs = useDayLogs();
+  const trackers = useTrackers();
+  const contacts = useContacts();
   const todayLog = logs.find((l) => l.id === today);
   const dateLabel = capitalize(fmt(today, 'EEEE d MMMM'));
   const quote = quoteOfDay(today);
@@ -165,6 +168,9 @@ export function TodayPage() {
           </button>
         }
       >
+        <EventSuggestions date={today} events={events} log={todayLog} trackers={trackers} contacts={contacts} />
+        <HabitsRow date={today} log={todayLog} trackers={trackers} />
+        <FmjNudge date={today} log={todayLog} />
         <div className="card p-3">
           <MoodPicker date={today} value={todayLog?.mood} size="sm" />
           {todayLog?.mood && (
