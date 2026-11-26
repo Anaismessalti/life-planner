@@ -1,7 +1,7 @@
 import { db, getMeta, setMeta } from '../db/db';
 import { addDays, timeToMin, todayISO, weekday } from './dates';
 import { eur, financeOccurrencesIn } from './finance';
-import { expandTasks } from './tasks';
+import { expandTasks, isClosed } from './tasks';
 
 export interface NotifPrefs {
   enabled: boolean;
@@ -58,7 +58,7 @@ export async function checkReminders(nowDate = new Date()) {
   const day = expandTasks(all, today, addDays(today, 1));
 
   for (const t of day) {
-    if (t.status === 'done' || !t.time || t.remindBefore === -1) continue;
+    if (isClosed(t) || !t.time || t.remindBefore === -1) continue;
     const isEvent = t.kind === 'event';
     if (isEvent && !prefs.events) continue;
     if (!isEvent && !(prefs.priority && t.priority === 'must') && t.remindBefore === undefined) continue;
@@ -74,7 +74,7 @@ export async function checkReminders(nowDate = new Date()) {
     if (prefs.daily) {
       const tasks = tdy.filter((t) => t.kind === 'task');
       const ev = tdy.filter((t) => t.kind === 'event');
-      await send(`daily:${today}`, 'Ta journée ✨', `${tasks.length} tâche${tasks.length > 1 ? 's' : ''}, ${ev.length} rendez-vous${ev[0] ? ` (1er à ${ev[0].time || '—'})` : ''}`);
+      await send(`daily:${today}`, 'Aujourd’hui', `${tasks.length} tâche${tasks.length > 1 ? 's' : ''}, ${ev.length} rendez-vous${ev[0] ? ` (1er à ${ev[0].time || '—'})` : ''}`);
     }
     if (prefs.weekly && weekday(today) === 1) {
       const wk = expandTasks(all, today, addDays(today, 6));
@@ -82,7 +82,7 @@ export async function checkReminders(nowDate = new Date()) {
     }
     if (prefs.deadlines) {
       for (const t of all) {
-        if (t.deleted || t.status === 'done' || !t.dueDate) continue;
+        if (t.deleted || isClosed(t) || !t.dueDate) continue;
         if (t.dueDate === today || t.dueDate === addDays(today, 1))
           await send(`due:${t.id}:${t.dueDate}`, t.dueDate === today ? "Échéance aujourd'hui" : 'Échéance demain', t.title);
       }

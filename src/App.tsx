@@ -47,7 +47,7 @@ function Editors() {
 function SyncDot() {
   const s = useSyncExternalStore(syncStore.subscribe, syncStore.get);
   if (s.status === 'off') return null;
-  const c = s.status === 'idle' ? 'bg-emerald-500' : s.status === 'error' ? 'bg-red-500' : 'bg-amber-400';
+  const c = s.status === 'idle' ? 'bg-[#8E6BB0]' : s.status === 'error' ? 'bg-red-500' : 'bg-amber-400';
   return <span className={`h-2 w-2 rounded-full ${c}`} title={`Synchronisation : ${s.status}`} />;
 }
 

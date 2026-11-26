@@ -21,6 +21,31 @@
       "extra": ""
     },
     {
+      "name": "Accueil : « Ça s’est passé ? » propose le Kiné du 19",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Accueil : aucune salutation",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Accueil : habitudes de la semaine avec compteur",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Accueil : le rendez-vous confirmé quitte la liste",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Journal : le Kiné confirmé ajoute « Médecin » le 19 novembre",
+      "pass": true,
+      "extra": "[\"tr-medecin\"]"
+    },
+    {
       "name": "Objectif d’octobre non terminé visible en novembre",
       "pass": true,
       "extra": ""
@@ -31,17 +56,17 @@
       "extra": ""
     },
     {
-      "name": "Projet étapes + tâches : 40 %",
+      "name": "Projet étapes + tâches : 33 %",
       "pass": true,
-      "extra": "40%"
+      "extra": "33%"
     },
     {
-      "name": "Tâche terminée → étape « Révisions » validée → 80 %",
+      "name": "Tâche terminée → étape « Révisions » validée → 67 %",
       "pass": true,
-      "extra": "80%"
+      "extra": "67%"
     },
     {
-      "name": "Tâche rouverte → retour à 40 %",
+      "name": "Tâche rouverte → retour à 33 %",
       "pass": true,
       "extra": ""
     },
@@ -117,6 +142,26 @@
     },
     {
       "name": "Analytics : Léa 0 jours",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Bilan : « Mon mois en bref » avec la part de jours renseignés",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Bilan : comment je l’ai vécu (humeur sur assez de jours)",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Équilibre : quatre pôles",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Plus de colonne « % activités » ni de camembert des familles",
       "pass": true,
       "extra": ""
     },
@@ -206,7 +251,7 @@
       "extra": "+0px"
     },
     {
-      "name": "118 boutons touchés sans erreur",
+      "name": "116 boutons touchés sans erreur",
       "pass": true,
       "extra": ""
     },

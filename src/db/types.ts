@@ -72,7 +72,18 @@ export interface Task extends BaseRecord {
   occurrenceDate?: ISODate;
   /** Rappel en minutes avant l'heure (rendez-vous / tâches). */
   remindBefore?: number;
+  /**
+   * Ce qui s'est réellement passé.
+   * Rendez-vous : happened (a eu lieu), cancelled (annulé), noshow (pas honoré).
+   * Tâche : dropped (plus nécessaire), skipped (occurrence récurrente passée sans être faite).
+   */
+  outcome?: TaskOutcome;
+  outcomeAt?: number;
+  /** Nombre total de reports (l'historique détaillé est limité aux derniers). */
+  postponeCount?: number;
 }
+
+export type TaskOutcome = 'happened' | 'cancelled' | 'noshow' | 'dropped' | 'skipped';
 
 export interface Category extends BaseRecord {
   name: string;
@@ -152,6 +163,8 @@ export interface BudgetCategory extends BaseRecord {
   kind: 'fixed' | 'variable';
   /** Budget mensuel prévu (facultatif). */
   monthlyLimit?: number;
+  /** Plafonds datés : le plafond d'un mois est le dernier fixé à partir de ce mois ou avant. Les mois passés ne changent jamais. */
+  limits?: Record<string, number | null>;
   order: number;
 }
 
@@ -221,6 +234,8 @@ export interface DayItem {
   tags?: string[];
   /** Ma note de la sortie, de 1 à 10. */
   rating?: number;
+  /** Ajouté automatiquement depuis ce rendez-vous de l'agenda (retiré s'il est annulé). */
+  fromEvent?: string;
 }
 
 /** Journal d'une journée. id = date (YYYY-MM-DD) : jamais de doublon, même entre appareils. */
@@ -239,6 +254,8 @@ export interface DayLog extends BaseRecord {
   sleep?: DaySleep;
   /** Five Minute Journal : gratitude, intentions, affirmation (matin) ; 3 belles choses, à améliorer (soir). */
   fmj?: FiveMinute;
+  /** Journée douce : les habitudes ne comptent pas ce jour-là. */
+  soft?: boolean;
 }
 
 export interface DaySleep {

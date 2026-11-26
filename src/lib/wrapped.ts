@@ -27,22 +27,22 @@ export function wrappedCards(a: Analytics, prev: Analytics): WrappedCard[] {
   if (a.key.outings.days)
     out.push({
       k: 'out',
-      big: `${a.key.outings.days} sorties`,
-      small: prev.key.outings.days ? `${a.key.outings.days >= prev.key.outings.days ? '+' : ''}${a.key.outings.days - prev.key.outings.days} vs la période précédente` : 'social era',
+      big: `${a.key.outings.days} jour${a.key.outings.days > 1 ? 's' : ''} de sortie`,
+      small: 'social era',
       from: '#A83278',
       to: '#8E6BB0',
     });
   if (who) out.push({ k: 'who', big: who.contact.name, small: `ta personne n°1 · ${who.days} jour${who.days > 1 ? 's' : ''} ensemble`, from: '#D46A8C', to: '#81265D' });
-  if (where) out.push({ k: 'where', big: where.contact.name, small: `ton QG · ${where.days} fois`, from: '#8E6BB0', to: '#382332' });
+  if (where) out.push({ k: 'where', big: where.contact.name, small: `ton QG · ${where.days} jour${where.days > 1 ? 's' : ''}`, from: '#8E6BB0', to: '#382332' });
   const bestOut = a.rated.top[0];
   if (bestOut) out.push({ k: 'best-out', big: `${bestOut.rating}/10`, small: `ta meilleure sortie · ${bestOut.tracker.name}${bestOut.with.length ? ` avec ${bestOut.with.slice(0, 2).join(', ')}` : ''}`, from: '#E0457B', to: '#81265D' });
   if (a.score.avg !== undefined) out.push({ k: 'score', big: `${String(a.score.avg).replace('.', ',')}/10`, small: `la note moyenne de tes journées`, from: '#A83278', to: '#C7A0C9' });
   if (topAct) out.push({ k: 'act', big: topAct.tracker.name, small: `ton activité n°1 · ${topAct.days} jour${topAct.days > 1 ? 's' : ''}`, from: topAct.tracker.color, to: '#382332' });
   if (a.sleep.avgMin) out.push({ k: 'sleep', big: fmtDuration(a.sleep.avgMin), small: `de sommeil par nuit · ${a.sleep.nights} nuit${a.sleep.nights > 1 ? 's' : ''}`, from: '#5B6FB5', to: '#382332' });
   if (a.fmj.gratitudes) out.push({ k: 'fmj', big: `${a.fmj.gratitudes} gratitudes`, small: `écrites en ${a.fmj.days} jour${a.fmj.days > 1 ? 's' : ''}`, from: '#E0789E', to: '#A83278' });
-  if (a.agenda?.events) out.push({ k: 'agenda', big: `${a.agenda.events} rendez-vous`, small: `${a.agenda.done} tâches cochées · busy girl`, from: '#81265D', to: '#C7A0C9' });
+  if (a.agenda?.events) out.push({ k: 'agenda', big: `${a.agenda.events} rendez-vous`, small: `qui ont eu lieu · ${a.agenda.done} tâches cochées`, from: '#81265D', to: '#C7A0C9' });
   out.push({ k: 'hendaye', big: `HENDAYE × ${a.key.hendaye.days}`, small: a.key.hendaye.days ? 'lendemains qui piquent' : 'zéro lendemain difficile. Iconic.', from: '#382332', to: '#81265D' });
-  if (a.spent.total) out.push({ k: 'spent', big: eur(a.spent.total), small: 'dépensés en sorties et plaisirs', from: '#C98A4B', to: '#A83278' });
+  if (a.spent.total) out.push({ k: 'spent', big: eur(a.spent.total), small: 'notés dans ton journal (sorties, plaisirs)', from: '#C98A4B', to: '#A83278' });
   return out;
 }
 

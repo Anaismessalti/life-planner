@@ -87,12 +87,14 @@ describe('tâches et calendrier', () => {
     await runRollover('2026-11-25');
     await runRollover('2026-11-25');
     const all = await db.tasks.toArray();
-    const inst = all.filter((t) => t.seriesId === weekly.id);
+    const inst = all.filter((t) => t.seriesId === weekly.id && !t.outcome);
     expect(inst).toHaveLength(1);
-    // la première occurrence manquée (16 nov.) est reportée une seule fois, sans accumulation
-    expect(inst[0].id).toBe(occurrenceId(weekly.id, '2026-11-16'));
+    // l'occurrence du 16 n'est jamais traînée au-delà de la suivante (23) : elle est close comme « passée »,
+    // et seule la dernière manquée (23 nov.) est reportée, une seule fois
+    expect(all.find((t) => t.id === occurrenceId(weekly.id, '2026-11-16'))!.outcome).toBe('skipped');
+    expect(inst[0].id).toBe(occurrenceId(weekly.id, '2026-11-23'));
     expect(inst[0].date).toBe('2026-11-25');
-    expect(inst[0].originalDate).toBe('2026-11-16');
+    expect(inst[0].originalDate).toBe('2026-11-23');
     const today = expandTasks(all, '2026-11-25', '2026-11-25');
     expect(today.map((t) => t.title).sort()).toEqual(['Courses', 'Vitamines']);
   });

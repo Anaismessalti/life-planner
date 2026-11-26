@@ -170,6 +170,21 @@ ok('Report idempotent après réouverture (pas de doublon)', (await page.locator
 ok('Citation du jour affichée', (await page.locator('main p.italic').first().textContent()).length > 10);
 await page.screenshot({ path: 'e2e/shots/qa/today.png', fullPage: true });
 
+// Accueil : le rendez-vous passé du 19 attend une réponse ; « A eu lieu » le fait entrer dans le journal
+ok('Accueil : « Ça s’est passé ? » propose le Kiné du 19', await page.locator('[data-testid=to-confirm] [data-testid=task-item]:has-text("Kiné")').count());
+ok('Accueil : aucune salutation', !/Bonjour|Bonsoir|Belle journée/.test(await page.locator('main').textContent()));
+ok('Accueil : habitudes de la semaine avec compteur', /\d\/\d|fait pour la semaine/.test(await page.getByTestId('habits').textContent()));
+await page.locator('[data-testid=to-confirm] [data-testid=task-item]:has-text("Kiné") [data-testid=outcome-happened]').click();
+await page.waitForTimeout(600);
+ok('Accueil : le rendez-vous confirmé quitte la liste', !(await page.locator('[data-testid=to-confirm]').count()));
+const kineLog = await page.evaluate(async () => {
+  const req = indexedDB.open('life-planner');
+  const db = await new Promise((r) => (req.onsuccess = () => r(req.result)));
+  const l = await new Promise((r) => (db.transaction('daylogs').objectStore('daylogs').get('2026-11-19').onsuccess = (e) => r(e.target.result)));
+  return (l?.items || []).filter((i) => i.fromEvent === 'tk-kine').map((i) => i.trackerId);
+});
+ok('Journal : le Kiné confirmé ajoute « Médecin » le 19 novembre', kineLog.includes('tr-medecin'), JSON.stringify(kineLog));
+
 // Calendrier : objectif d'octobre non fait remonté en novembre ; projet multi-années
 await page.goto(BASE + '#/calendar');
 await page.waitForTimeout(500);
@@ -184,14 +199,14 @@ await page.waitForTimeout(500);
 ok('Projet chiffré : 42 km sur 100 = 42 %', await page.locator('[data-testid=project-card]:has-text("Courir 100 km"):has-text("42%")').count());
 await page.locator('[data-testid=project-card]:has-text("Certification")').click();
 await page.waitForTimeout(400);
-// 3 étapes : Inscription (cochée), Révisions (1 tâche faite / 2), Examen ; tâches comptées : 2 dont 1 faite → 2/5 = 40 %
-ok('Projet étapes + tâches : 40 %', (await page.getByTestId('project-pct').textContent()) === '40%', await page.getByTestId('project-pct').textContent());
+// 3 étapes : Inscription (cochée), Révisions (1 tâche faite / 2), Examen. Les tâches de Révisions comptent à travers l'étape → 1/3 = 33 %
+ok('Projet étapes + tâches : 33 %', (await page.getByTestId('project-pct').textContent()) === '33%', await page.getByTestId('project-pct').textContent());
 await page.locator('[data-testid=task-item]:has-text("Chapitre 1") button[aria-label="Marquer comme faite"]').click();
 await page.waitForTimeout(400);
-ok('Tâche terminée → étape « Révisions » validée → 80 %', (await page.getByTestId('project-pct').textContent()) === '80%', await page.getByTestId('project-pct').textContent());
+ok('Tâche terminée → étape « Révisions » validée → 67 %', (await page.getByTestId('project-pct').textContent()) === '67%', await page.getByTestId('project-pct').textContent());
 await page.locator('[data-testid=task-item]:has-text("Chapitre 1") button[aria-label="Marquer comme non faite"]').click();
 await page.waitForTimeout(400);
-ok('Tâche rouverte → retour à 40 %', (await page.getByTestId('project-pct').textContent()) === '40%');
+ok('Tâche rouverte → retour à 33 %', (await page.getByTestId('project-pct').textContent()) === '33%');
 await page.goto(BASE + '#/projects');
 await page.getByRole('button', { name: /À venir/ }).click();
 await page.waitForTimeout(300);
@@ -228,6 +243,10 @@ ok(`Analytics : complétion ${oct.logged}/31`, (await page.getByTestId('completi
 ok(`Analytics : humeur moyenne ${oct.moodAvg}`, (await page.getByTestId('mood-avg').textContent()).includes(String(oct.moodAvg).replace('.', ',')));
 ok(`Analytics : dépenses du journal ${eurFr(oct.spent)}`, norm(await page.getByTestId('spent-total').textContent()) === norm(eurFr(oct.spent)));
 ok(`Analytics : Léa ${oct.leaDays} jours`, oct.leaDays === 0 || (await page.getByTestId('people-count-pe-lea').textContent()).includes(`${oct.leaDays} j`));
+ok('Bilan : « Mon mois en bref » avec la part de jours renseignés', (await page.getByTestId('review').textContent()).includes('Mon mois en bref') && (await page.getByTestId('review-coverage').textContent()).includes(`${oct.logged} jours sur 31`));
+ok('Bilan : comment je l’ai vécu (humeur sur assez de jours)', (await page.getByTestId('review-lived').textContent()).includes('humeur moyenne'));
+ok('Équilibre : quatre pôles', (await page.locator('[data-testid=balance] [data-testid^=pole-]').count()) === 4);
+ok('Plus de colonne « % activités » ni de camembert des familles', !(await page.locator('text=% activités').count()) && !(await page.locator('text=Répartition des activités').count()));
 await page.screenshot({ path: 'e2e/shots/qa/analytics-oct.png', fullPage: true });
 // Filtre par famille
 await page.getByTestId('filter-cycle').click();

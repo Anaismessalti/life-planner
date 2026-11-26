@@ -47,7 +47,7 @@ export function SettingsPage() {
       <div className="grid gap-7 lg:grid-cols-2">
         <div className="min-w-0 space-y-7">
           <Card icon={<User size={18} />} title="Profil">
-            <Field label="Ton prénom (pour la salutation)">
+            <Field label="Ton prénom">
               <input className="input" value={n} onChange={(e) => setN(e.target.value)} onBlur={() => setSetting('userName', n.trim())} placeholder="Anaïs" />
             </Field>
           </Card>
@@ -221,7 +221,7 @@ function NotificationsCard() {
     setPerm(r);
     if (r === 'granted') {
       save({ enabled: true });
-      show('Notifications activées ✨', 'Tu recevras tes rappels du Life Planner.');
+      show('Notifications activées', 'Tu recevras tes rappels du Life Planner.');
     }
   };
   return (
@@ -257,7 +257,7 @@ function NotificationsCard() {
               <Field label="Heure des récapitulatifs">
                 <input type="time" className="input py-2" value={p.dailyTime} onChange={(e) => save({ dailyTime: e.target.value || '08:00' })} />
               </Field>
-              <button className="btn-soft mt-2" onClick={() => show('Test ✨', 'Les notifications fonctionnent.')}>
+              <button className="btn-soft mt-2" onClick={() => show('Test', 'Les notifications fonctionnent.')}>
                 Tester une notification
               </button>
             </div>
@@ -424,7 +424,7 @@ function SyncCard() {
       ) : (
         <>
           <div className="flex items-center gap-2 text-sm">
-            <span className={`h-2.5 w-2.5 rounded-full ${st.status === 'idle' ? 'bg-emerald-500' : st.status === 'error' ? 'bg-red-500' : 'bg-amber-400'}`} />
+            <span className={`h-2.5 w-2.5 rounded-full ${st.status === 'idle' ? 'bg-[#8E6BB0]' : st.status === 'error' ? 'bg-red-500' : 'bg-amber-400'}`} />
             <span className="flex-1">
               {statusText[st.status]}
               {st.lastSync && st.status === 'idle' ? ` · ${new Date(st.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}

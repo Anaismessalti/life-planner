@@ -4,8 +4,8 @@ import { PaymentsList } from '../components/DayViews';
 import { ConfirmButton, Empty, Field, Progress, Section, Segmented, Sheet, Toggle, toast } from '../components/ui';
 import { create, db, uid, update } from '../db/db';
 import type { BudgetCategory, Expense, FixedExpense, Frequency, Income, IncomeType, SavingsGoal } from '../db/types';
-import { addMonths, fmt, fmtMonth, isISODate, monthOf, todayISO } from '../lib/dates';
-import { INCOME_TYPE_LABEL, eur, history, monthSummary, parseAmount, togglePayment, type MonthSummary } from '../lib/finance';
+import { addDays, addMonths, fmt, fmtMonth, isISODate, monthOf, todayISO } from '../lib/dates';
+import { INCOME_TYPE_LABEL, eur, history, limitFor, limitsPatch, monthSummary, parseAmount, togglePayment, type CategoryStatus, type MonthSummary } from '../lib/finance';
 import { useBudgetCategories, useFinance, useToday } from '../lib/hooks';
 import { Icon } from '../lib/icons';
 import { FREQ_LABEL, financeOccurrences } from '../lib/recurrence';
@@ -18,7 +18,7 @@ export function BudgetPage() {
   const [month, setMonth] = useState(monthOf(today));
   const [tab, setTab] = useState<Tab>('overview');
   const data = useFinance();
-  const s = useMemo(() => monthSummary(data, month), [data, month]);
+  const s = useMemo(() => monthSummary(data, month, { today }), [data, month, today]);
 
   return (
     <div className="space-y-5">
@@ -62,7 +62,7 @@ function Stat({ label, value, sub, tone }: { label: string; value: number; sub?:
   return (
     <div className="card p-3.5">
       <div className="label">{label}</div>
-      <div className={`mt-1 font-serif text-2xl font-semibold ${tone === 'plus' ? 'text-emerald-700 dark:text-emerald-300' : 'text-plum'}`}>{eur(value)}</div>
+      <div className={`mt-1 font-serif text-2xl font-semibold ${tone === 'plus' ? 'text-[#6B4FA0] dark:text-[#C9B3F0]' : 'text-plum'}`}>{eur(value)}</div>
       {sub && <div className="text-xs text-soft">{sub}</div>}
     </div>
   );
@@ -70,10 +70,15 @@ function Stat({ label, value, sub, tone }: { label: string; value: number; sub?:
 
 function Overview({ s, month, today }: { s: MonthSummary; month: string; today: string }) {
   const spent = s.fixedPlanned + s.variable + s.savings;
-  const pct = s.incomePlanned ? (spent / s.incomePlanned) * 100 : 0;
+  const pct = s.incomePlanned ? (spent / s.incomePlanned) * 100 : spent > 0 ? 101 : 0;
   const isCurrent = monthOf(today) === month;
   const upcoming = s.occurrences.filter((o) => o.refType === 'fixed' && o.confirmed === undefined && (!isCurrent || o.date >= today));
-  const overdue = isCurrent ? s.occurrences.filter((o) => o.confirmed === undefined && o.date < today) : [];
+  const data = useFinance();
+  // À confirmer : aussi le mois précédent (un prélèvement du 30 ne doit pas disparaître le 1er).
+  const overdue = isCurrent
+    ? [...monthSummary(data, addMonths(month, -1)).occurrences, ...s.occurrences].filter((o) => o.confirmed === undefined && !o.orphan && o.date < today)
+    : [];
+  const alerts = isCurrent ? s.byCategory.filter((c) => c.over || (c.used !== undefined && c.used >= 0.8) || (c.limit && c.projected && c.projected > c.limit)) : [];
   const empty = !s.occurrences.length && !s.variable;
 
   return (
@@ -81,15 +86,15 @@ function Overview({ s, month, today }: { s: MonthSummary; month: string; today: 
       <div className="anim-rise relative overflow-hidden rounded-3xl p-5 text-white shadow-lift" style={{ background: 'linear-gradient(135deg, #A83278, #81265D 60%, #6a1f4d)' }}>
         <div className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full bg-white/10" />
         <div className="pointer-events-none absolute -bottom-12 right-16 h-28 w-28 rounded-full bg-white/5" />
-        <div className="relative text-xs font-medium uppercase tracking-wider text-white/75">Reste à vivre prévisionnel</div>
+        <div className="relative text-xs font-medium uppercase tracking-wider text-white/75">Reste à vivre du mois</div>
         <div className="relative mt-1 font-serif text-5xl font-semibold" data-testid="remaining">{eur(s.remainingForecast)}</div>
-        <div className="relative mt-1 text-sm text-white/80">Réel à ce jour : {eur(s.remainingActual)}</div>
+        <div className="relative mt-1 text-sm text-white/80">Sur ton compte à ce jour (selon ce que tu as confirmé) : {eur(s.remainingActual)}</div>
         <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-white/20">
           <div className="h-full rounded-full bg-white/90 transition-all duration-700" style={{ width: `${Math.min(100, pct)}%` }} />
         </div>
         <div className="relative mt-1.5 text-xs text-white/75" data-testid="engaged">
-          {Math.round(pct)} % des revenus prévus engagés
-          {pct > 100 && <b className="text-white"> · dépassement de {eur(spent - s.incomePlanned)}</b>}
+          {s.incomePlanned ? `${Math.round(pct)} % de tes revenus du mois déjà engagés (fixes, dépenses, épargne)` : spent > 0 ? 'Aucun revenu prévu ce mois-ci' : 'Rien d’engagé pour l’instant'}
+          {pct > 100 && <b className="text-white"> · {eur(spent - s.incomePlanned)} de plus que tes revenus</b>}
         </div>
       </div>
 
@@ -114,9 +119,25 @@ function Overview({ s, month, today }: { s: MonthSummary; month: string; today: 
         <Stat label="Épargne" value={s.savings} sub="Ce mois-ci" />
       </div>
 
+      {alerts.length > 0 && (
+        <Section title="À surveiller">
+          <div className="card space-y-1.5 p-3" data-testid="budget-alerts">
+            {alerts.map((c) => (
+              <p key={c.id} className="text-sm">
+                {c.over
+                  ? `Tu as dépassé ton budget ${c.name.toLowerCase()} de ${eur(c.over)} ce mois-ci.`
+                  : c.used! >= 0.8
+                    ? `Budget ${c.name.toLowerCase()} : ${Math.round(c.used! * 100)} % utilisés, il reste ${eur(c.left || 0)}.`
+                    : `Budget ${c.name.toLowerCase()} : à ce rythme, environ ${eur(c.projected!)} d'ici la fin du mois (plafond ${eur(c.limit!)}).`}
+              </p>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {overdue.length > 0 && (
         <Section title="À confirmer">
-          <p className="text-xs text-soft">Ces montants ne sont pas comptés comme payés ou reçus tant que tu ne les confirmes pas.</p>
+          <p className="text-xs text-soft">Ils ne comptent pas comme payés ou reçus tant que tu ne les as pas confirmés.</p>
           <PaymentsList items={overdue} onToggle={togglePayment} />
         </Section>
       )}
@@ -143,29 +164,55 @@ function Overview({ s, month, today }: { s: MonthSummary; month: string; today: 
       </Section>
 
       {s.byCategory.length > 0 && (
-        <Section title="Répartition des dépenses">
-          <div className="card flex flex-col items-center gap-5 p-4 sm:flex-row">
-            <Donut items={s.byCategory} />
-            <div className="w-full flex-1 space-y-2">
+        <Section title="Par catégorie">
+          <div className="card space-y-4 p-4">
+            <div className="flex justify-center">
+              <Donut items={s.byCategory.filter((c) => c.amount > 0)} />
+            </div>
+            <div className="space-y-3.5">
               {s.byCategory.map((c) => (
-                <div key={c.id} className="space-y-1">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.color }} />
-                    <span className="flex-1">{c.name}</span>
-                    <span className="font-medium">{eur(c.amount)}</span>
-                  </div>
-                  {c.limit ? (
-                    <div className="flex items-center gap-2">
-                      <Progress value={(c.amount / c.limit) * 100} className="h-1.5 flex-1" color={c.amount > c.limit ? '#dc2626' : c.color} />
-                      <span className={`text-[11px] ${c.amount > c.limit ? 'text-red-600' : 'text-soft'}`}>/ {eur(c.limit)}</span>
-                    </div>
-                  ) : null}
-                </div>
+                <CategoryRow key={c.id} c={c} />
               ))}
             </div>
           </div>
+          <p className="text-[11px] text-soft">Montants réellement dépensés. Les prélèvements pas encore confirmés sont indiqués à part (« prévus »).</p>
         </Section>
       )}
+    </div>
+  );
+}
+
+/** Une catégorie : dépensé, plafond, reste ou dépassement chiffré, et projection de fin de mois. */
+export function CategoryRow({ c }: { c: CategoryStatus }) {
+  const pct = c.used !== undefined ? Math.round(c.used * 1000) / 10 : undefined;
+  const near = c.used !== undefined && c.used >= 0.8 && !c.over;
+  const projOver = c.limit && c.projected && c.projected > c.limit && !c.over;
+  return (
+    <div className="space-y-1" data-testid={`cat-${c.id}`}>
+      <div className="flex items-center gap-2 text-sm">
+        <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.color }} />
+        <span className="flex-1">{c.name}</span>
+        <span className="font-medium">{eur(c.amount)}</span>
+      </div>
+      {c.limit ? (
+        <>
+          <div className="relative h-2 overflow-hidden rounded-full bg-blush">
+            <div className="h-full rounded-full" style={{ width: `${Math.min(100, (c.amount / Math.max(c.limit, c.amount)) * 100)}%`, background: c.over ? '#C0395A' : c.color }} />
+            {c.over ? <div className="absolute inset-y-0 border-l-2 border-white" style={{ left: `${(c.limit / c.amount) * 100}%` }} title="plafond" /> : null}
+          </div>
+          <div className={`text-[11px] ${c.over ? 'font-medium text-[#C0395A]' : near ? 'text-rasp' : 'text-soft'}`} data-testid={`cat-${c.id}-text`}>
+            {c.over
+              ? `Budget ${eur(c.limit)} · dépensé ${eur(c.amount)} · ${String(pct).replace('.', ',')} % · dépassé de ${eur(c.over)}`
+              : `${eur(c.amount)} sur ${eur(c.limit)} · ${String(pct).replace('.', ',')} % · reste ${eur(c.left || 0)}`}
+          </div>
+        </>
+      ) : (
+        <div className="text-[11px] text-soft">Pas de plafond pour cette catégorie.</div>
+      )}
+      {c.pending > 0 && <div className="text-[11px] text-soft">+ {eur(c.pending)} de prélèvements prévus, pas encore confirmés</div>}
+      {projOver ? (
+        <div className="text-[11px] text-rasp">À ce rythme, tu finirais le mois vers {eur(c.projected!)}, soit {eur(c.projected! - c.limit!)} au-dessus.</div>
+      ) : null}
     </div>
   );
 }
@@ -217,7 +264,7 @@ function IncomesTab({ month }: { month: string }) {
                 {INCOME_TYPE_LABEL[i.type]} · {FREQ_LABEL[i.frequency]} · le {fmt(i.date, 'd')}
               </div>
             </div>
-            <div className="font-semibold text-emerald-700 dark:text-emerald-300">{eur(i.amount)}</div>
+            <div className="font-semibold text-[#6B4FA0] dark:text-[#C9B3F0]">{eur(i.amount)}</div>
           </button>
         ))}
       </Section>
@@ -300,6 +347,54 @@ function VariableTab({ month }: { month: string }) {
   );
 }
 
+/** Ce mois-ci comparé au mois précédent et à la moyenne des 3 mois d'avant, catégorie par catégorie. */
+function CategoryCompare({ data, month }: { data: ReturnType<typeof useFinance>; month: string }) {
+  const cur = monthSummary(data, month);
+  const prev = monthSummary(data, addMonths(month, -1));
+  const ref = [2, 3, 4].map((i) => monthSummary(data, addMonths(month, -i)));
+  const ids = [...new Set([...cur.byCategory, ...prev.byCategory].map((c) => c.id))];
+  if (!ids.length) return <p className="text-sm text-soft">Pas encore de dépenses à comparer.</p>;
+  const amt = (m: MonthSummary, id: string) => m.byCategory.find((c) => c.id === id)?.amount || 0;
+  const rows = ids
+    .map((id) => {
+      const c = cur.byCategory.find((x) => x.id === id) || prev.byCategory.find((x) => x.id === id)!;
+      const known = ref.filter((m) => m.byCategory.length > 0);
+      return { id, name: c.name, color: c.color, now: amt(cur, id), before: amt(prev, id), avg: known.length ? known.reduce((a, m) => a + amt(m, id), 0) / known.length : undefined };
+    })
+    .sort((a, b) => b.now - a.now);
+  return (
+    <div className="card overflow-x-auto p-3">
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="text-left text-[11px] text-soft">
+            <th className="py-1 font-medium">Catégorie</th>
+            <th className="py-1 text-right font-medium">{fmt(`${month}-01`, 'MMM')}</th>
+            <th className="py-1 text-right font-medium">{fmt(`${addMonths(month, -1)}-01`, 'MMM')}</th>
+            <th className="py-1 text-right font-medium">Écart</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const d = r.now - r.before;
+            return (
+              <tr key={r.id} className="border-t border-line/70">
+                <td className="py-1.5">
+                  <span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: r.color }} />
+                  {r.name}
+                </td>
+                <td className="py-1.5 text-right font-medium">{eur(r.now)}</td>
+                <td className="py-1.5 text-right text-soft">{eur(r.before)}</td>
+                <td className={`py-1.5 text-right ${d > 0 ? 'text-rasp' : 'text-soft'}`}>{d === 0 ? '=' : `${d > 0 ? '+' : '−'}${eur(Math.abs(d))}`}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="mt-2 text-[11px] text-soft">Montants réellement dépensés. Le mois en cours n'est peut-être pas terminé.</p>
+    </div>
+  );
+}
+
 function MoreTab({ month }: { month: string }) {
   const data = useFinance();
   const cats = useBudgetCategories();
@@ -317,7 +412,7 @@ function MoreTab({ month }: { month: string }) {
             {hist.map((h) => (
               <div key={h.month} className="flex flex-1 flex-col items-center gap-1">
                 <div className="flex h-32 w-full items-end justify-center gap-1">
-                  <div className="w-1/3 rounded-t-md bg-emerald-400/70" style={{ height: `${(h.incomePlanned / max) * 100}%` }} title={`Revenus ${eur(h.incomePlanned)}`} />
+                  <div className="w-1/3 rounded-t-md bg-[#8E6BB0]/70" style={{ height: `${(h.incomePlanned / max) * 100}%` }} title={`Revenus ${eur(h.incomePlanned)}`} />
                   <div className="w-1/3 rounded-t-md bg-rasp/80" style={{ height: `${((h.fixedPlanned + h.variable) / max) * 100}%` }} title={`Dépenses ${eur(h.fixedPlanned + h.variable)}`} />
                 </div>
                 <span className={`text-[11px] ${h.month === month ? 'font-semibold text-rasp' : 'text-soft'}`}>{fmt(`${h.month}-01`, 'MMM')}</span>
@@ -326,7 +421,7 @@ function MoreTab({ month }: { month: string }) {
           </div>
           <div className="mt-3 flex gap-4 text-xs text-soft">
             <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" /> Revenus
+              <span className="h-2 w-2 rounded-full bg-[#8E6BB0]" /> Revenus
             </span>
             <span className="flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-rasp" /> Dépenses
@@ -357,35 +452,49 @@ function MoreTab({ month }: { month: string }) {
         </div>
       </Section>
 
-      <Section title="Budgets par catégorie">
-        <p className="text-xs text-soft">Fixe un plafond mensuel (facultatif) : une barre te montre où tu en es.</p>
+      <Section title="Plafonds par catégorie">
+        <p className="text-xs text-soft">Un plafond fixé ici vaut pour {fmtMonth(month).toLowerCase()} et les mois suivants. Les mois passés gardent le leur.</p>
         <div className="space-y-2">
           {cats.map((c) => {
-            const spent = s.byCategory.find((x) => x.id === c.id)?.amount || 0;
+            const st = s.byCategory.find((x) => x.id === c.id);
+            const lim = limitFor(c, month);
             return (
-              <div key={c.id} className="card flex items-center gap-3 p-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white" style={{ background: c.color }}>
-                  <Icon name={c.icon} size={15} />
-                </span>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="truncate">{c.name}</span>
-                    <span className="text-soft">{eur(spent)}</span>
-                  </div>
-                  {c.monthlyLimit ? <Progress value={(spent / c.monthlyLimit) * 100} className="h-1.5" color={spent > c.monthlyLimit ? '#dc2626' : c.color} /> : null}
+              <div key={c.id} className="card space-y-2 p-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white" style={{ background: c.color }}>
+                    <Icon name={c.icon} size={15} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{c.name}</span>
+                  <input
+                    key={`${c.id}-${month}-${lim ?? ''}`}
+                    className="input w-28 py-1.5 text-right text-sm"
+                    inputMode="decimal"
+                    placeholder="Pas de plafond"
+                    defaultValue={lim ? String(lim).replace('.', ',') : ''}
+                    onBlur={(e) => {
+                      const txt = e.target.value.trim();
+                      const v = txt ? parseAmount(txt) : undefined;
+                      if (txt && (v === undefined || v <= 0)) {
+                        e.target.value = lim ? String(lim).replace('.', ',') : '';
+                        return toast('Je n’ai pas compris ce montant (ex : 200 ou 150,50)');
+                      }
+                      if ((v || undefined) === lim) return;
+                      update<BudgetCategory>('budgetCategories', c.id, limitsPatch(c, month, v));
+                      toast(v ? `Plafond ${c.name.toLowerCase()} : ${eur(v)} à partir de ${fmtMonth(month).toLowerCase()}` : `Plus de plafond pour ${c.name.toLowerCase()}`);
+                    }}
+                    aria-label={`Plafond ${c.name}`}
+                    data-testid={`limit-${c.id}`}
+                  />
                 </div>
-                <input
-                  className="input w-24 py-1.5 text-right text-sm"
-                  inputMode="decimal"
-                  placeholder="Plafond"
-                  defaultValue={c.monthlyLimit ?? ''}
-                  onBlur={(e) => update<BudgetCategory>('budgetCategories', c.id, { monthlyLimit: parseAmount(e.target.value) })}
-                  aria-label={`Plafond ${c.name}`}
-                />
+                {st && lim ? <CategoryRow c={st} /> : null}
               </div>
             );
           })}
         </div>
+      </Section>
+
+      <Section title="Mois par mois, par catégorie">
+        <CategoryCompare data={data} month={month} />
       </Section>
 
       <Section title="Objectifs d'épargne">
@@ -437,7 +546,7 @@ function SavingsCard({ g }: { g: SavingsGoal }) {
         <span>
           {eur(saved)} sur {eur(g.target)}
         </span>
-        <span>{saved >= g.target ? 'Objectif atteint ✨' : `${Math.round((saved / g.target) * 100)} %`}</span>
+        <span>{saved >= g.target ? 'Objectif atteint' : `${Math.round((saved / g.target) * 100)} %`}</span>
       </div>
       {saved < g.target && g.deadline && (
         <div className="text-xs text-plum" data-testid="savings-per-month">
@@ -459,7 +568,7 @@ function SavingsCard({ g }: { g: SavingsGoal }) {
           if (saved + a < 0) return toast(`Tu ne peux pas retirer plus que ${eur(saved)}`);
           await update<SavingsGoal>('savings', g.id, { contributions: [...g.contributions, { id: uid(), date: todayISO(), amount: a }] });
           setAmt('');
-          toast(a > 0 ? `${eur(a)} mis de côté ✨` : `${eur(-a)} retirés`);
+          toast(a > 0 ? `${eur(a)} mis de côté` : `${eur(-a)} retirés`);
         }}
       >
         <input className="input py-1.5" inputMode="decimal" placeholder="Montant (négatif pour un retrait)" value={amt} onChange={(e) => setAmt(e.target.value)} />
@@ -602,8 +711,14 @@ export function IncomeEditor({ id }: { id?: string }) {
     if (!isISODate(f.date)) return toast('Choisis une date');
     if (f.endDate && f.endDate < f.date) return toast('La date de fin est avant la date de début');
     const rec = { label: f.label?.trim() || INCOME_TYPE_LABEL[f.type!], type: f.type!, amount, date: f.date, frequency: f.frequency!, endDate: f.endDate };
-    if (existing) await update<Income>('incomes', existing.id, rec);
-    else await create<Income>('incomes', rec as any);
+    if (existing) {
+      const scheduleChanged = existing.date !== rec.date || existing.amount !== rec.amount || existing.frequency !== rec.frequency;
+      const split = await splitPlan('incomes', existing, rec, false, scheduleChanged);
+      if (split) {
+        await update<Income>('incomes', existing.id, { endDate: split.end });
+        await create<Income>('incomes', { ...rec, date: split.start, endDate: rec.endDate && rec.endDate >= split.start ? rec.endDate : undefined } as any);
+      } else await update<Income>('incomes', existing.id, rec);
+    } else await create<Income>('incomes', rec as any);
     closeEditor();
     toast('Revenu enregistré');
   };
@@ -653,6 +768,30 @@ export function IncomeEditor({ id }: { id?: string }) {
   );
 }
 
+/**
+ * Changer la date, le montant ou la fréquence d'un revenu / prélèvement qui a déjà un passé :
+ * l'ancien s'arrête la veille, un nouveau commence. Les mois passés restent exactement comme ils étaient
+ * (pas de loyer compté deux fois, pas de montant réécrit). Même chose pour une réactivation après une pause.
+ */
+async function splitPlan(
+  _table: 'fixedExpenses' | 'incomes',
+  old: { date: string; frequency: Frequency; endDate?: string },
+  rec: { date: string; frequency: Frequency },
+  reactivated: boolean,
+  scheduleChanged: boolean,
+): Promise<{ end: string; start: string } | undefined> {
+  const today = todayISO();
+  if (!reactivated && !scheduleChanged) return undefined;
+  if (old.date >= today) return undefined; // rien de passé : on modifie simplement
+  if (reactivated) {
+    // Reprise : la pause reste une pause. Le nouveau commence à la prochaine échéance à partir d'aujourd'hui.
+    const next = financeOccurrences({ ...rec, date: rec.date }, today, addDays(today, 400))[0] || today;
+    return { end: old.endDate && old.endDate < today ? old.endDate : addDays(today, -1), start: next };
+  }
+  const start = rec.date >= today ? rec.date : financeOccurrences(rec, today, addDays(today, 400))[0] || today;
+  return { end: addDays(start, -1), start };
+}
+
 export function FixedEditor({ id }: { id?: string }) {
   const data = useFinance();
   const cats = useBudgetCategories().filter((c) => c.kind === 'fixed');
@@ -668,8 +807,15 @@ export function FixedEditor({ id }: { id?: string }) {
     if (!isISODate(f.date)) return toast('Choisis la date du premier prélèvement');
     if (f.endDate && f.endDate < f.date) return toast('La date de fin est avant la date de début');
     const rec = { label: f.label.trim(), amount, budgetCategoryId: f.budgetCategoryId, date: f.date, frequency: f.frequency!, endDate: f.endDate, active: f.active !== false };
-    if (existing) await update<FixedExpense>('fixedExpenses', existing.id, rec);
-    else await create<FixedExpense>('fixedExpenses', rec as any);
+    if (existing) {
+      const reactivated = existing.active === false && rec.active;
+      const scheduleChanged = existing.date !== rec.date || existing.amount !== rec.amount || existing.frequency !== rec.frequency;
+      const split = await splitPlan('fixedExpenses', existing, rec, reactivated, scheduleChanged);
+      if (split) {
+        await update<FixedExpense>('fixedExpenses', existing.id, { endDate: split.end, active: true });
+        await create<FixedExpense>('fixedExpenses', { ...rec, date: split.start, endDate: !reactivated && rec.endDate && rec.endDate >= split.start ? rec.endDate : undefined, active: true } as any);
+      } else await update<FixedExpense>('fixedExpenses', existing.id, rec);
+    } else await create<FixedExpense>('fixedExpenses', rec as any);
     closeEditor();
     toast('Dépense fixe enregistrée : elle apparaîtra dans ton calendrier');
   };
@@ -693,7 +839,7 @@ export function FixedEditor({ id }: { id?: string }) {
           {existing && (
             <button
               className="btn-ghost text-xs"
-              onClick={() => (f.active !== false ? setF({ active: false, endDate: f.endDate && f.endDate < todayISO() ? f.endDate : todayISO() }) : setF({ active: true, endDate: undefined }))}
+              onClick={() => (f.active !== false ? setF({ active: false, endDate: f.endDate && f.endDate < todayISO() ? f.endDate : todayISO() }) : setF({ active: true }))}
             >
               {f.active !== false ? 'Arrêter (garde l’historique)' : 'Réactiver'}
             </button>

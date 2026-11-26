@@ -76,7 +76,8 @@ export function occurrences(start: ISODate, rec: Recurrence, from: ISODate, to: 
 export function nextOccurrence(start: ISODate, rec: Recurrence, after: ISODate): ISODate | undefined {
   // Fenêtres de plus en plus larges : la plupart des séries trouvent leur prochaine date dans le mois.
   const from = addDays(after, 1);
-  for (const span of [40, 400, 800]) {
+  const unit = { daily: 1, weekly: 7, monthly: 31, yearly: 366 }[rec.freq] * Math.max(1, rec.interval || 1);
+  for (const span of [40, 400, Math.max(800, unit * 2 + 31)]) {
     const hit = occurrences(start, rec, from, addDays(after, span))[0];
     if (hit) return hit;
   }

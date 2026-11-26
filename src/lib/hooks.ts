@@ -41,6 +41,7 @@ export function useFinance(): FinanceData {
   const expenses = useLiveQuery(() => db.expenses.toArray(), [], EMPTY);
   const savings = useLiveQuery(() => db.savings.toArray(), [], EMPTY);
   const budgetCategories = useBudgetCategories();
+  const allCats = useLiveQuery(() => db.budgetCategories.toArray(), [], EMPTY);
   return useMemo(
     () => ({
       incomes: incomes.filter((x) => !x.deleted),
@@ -49,8 +50,14 @@ export function useFinance(): FinanceData {
       expenses: expenses.filter((x) => !x.deleted),
       savings: savings.filter((x) => !x.deleted),
       budgetCategories,
+      archive: {
+        incomes: incomes.filter((x) => x.deleted),
+        fixed: fixed.filter((x) => x.deleted),
+        savings: savings.filter((x) => x.deleted),
+        budgetCategories: allCats.filter((x) => x.deleted),
+      },
     }),
-    [incomes, fixed, payments, expenses, savings, budgetCategories],
+    [incomes, fixed, payments, expenses, savings, budgetCategories, allCats],
   );
 }
 export function useSetting<T>(key: string, fallback: T): T {

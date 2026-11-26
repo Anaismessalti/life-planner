@@ -1,7 +1,7 @@
 import { db } from '../db/db';
 import { addDays, todayISO, timeToMin } from './dates';
 import { financeOccurrencesIn, eur } from './finance';
-import { expandTasks } from './tasks';
+import { expandTasks, isClosed } from './tasks';
 
 const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 const d8 = (iso: string) => iso.replace(/-/g, '');
@@ -14,7 +14,7 @@ const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+
 export async function buildICS(remindMin = 30): Promise<string> {
   const from = addDays(todayISO(), -7);
   const to = addDays(todayISO(), 365);
-  const tasks = expandTasks(await db.tasks.toArray(), from, to).filter((t) => t.status !== 'done' && (t.kind === 'event' || t.time));
+  const tasks = expandTasks(await db.tasks.toArray(), from, to).filter((t) => !isClosed(t) && (t.kind === 'event' || t.time));
   const fin = {
     incomes: (await db.incomes.toArray()).filter((x) => !x.deleted),
     fixed: (await db.fixedExpenses.toArray()).filter((x) => !x.deleted),

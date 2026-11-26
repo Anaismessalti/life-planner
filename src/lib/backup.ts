@@ -121,7 +121,7 @@ export async function exportTasksCSV() {
       t.dueDate,
       t.targetMonth,
       PRIORITY_LABEL[t.priority],
-      t.status === 'done' ? 'Terminée' : 'À faire',
+      t.outcome ? ({ happened: 'A eu lieu', cancelled: 'Annulé', noshow: 'Pas honoré', dropped: 'Plus nécessaire', skipped: 'Passée' } as const)[t.outcome] : t.status === 'done' ? 'Terminée' : 'À faire',
       t.categoryId ? cats.get(t.categoryId) : '',
       t.projectId ? projects.get(t.projectId) : '',
       t.recurrence ? 'Oui' : '',

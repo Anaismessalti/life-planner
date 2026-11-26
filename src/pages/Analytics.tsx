@@ -4,28 +4,18 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Progress, Section, Segmented, toast } from '../components/ui';
 import { db } from '../db/db';
 import type { Contact, DayLog, ISODate, Tracker, TrackerGroup } from '../db/types';
-import { WEEKDAYS_SHORT, addDays, capitalize, fmt, monthOf, range, weekStart } from '../lib/dates';
+import { WEEKDAYS_SHORT, addDays, capitalize, diffDays, fmt, monthOf, range, weekStart } from '../lib/dates';
 import { analyze, fmtPct, periodOf, shiftPeriod, trend, type Analytics, type Count, type PeriodKind } from '../lib/analytics';
-import { eur } from '../lib/finance';
+import { eur, monthSummary } from '../lib/finance';
+import { DEFAULT_HABITS, normalizeHabits, type HabitSetting } from '../lib/bridge';
+import { useFinance, useSetting } from '../lib/hooks';
+import { balance, buildReview, crossings, habitsOver, CROSS, type PoleStat, type Review } from '../lib/review';
 import { Icon } from '../lib/icons';
 import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
 import { SLEEP_QUALITY, fmtDuration } from '../lib/wellbeing';
 import { shareWrapped, wrappedCards } from '../lib/wrapped';
 
 const EMPTY: never[] = [];
-const GROUP_COLOR: Record<TrackerGroup, string> = {
-  sorties: '#A83278',
-  amour: '#E0457B',
-  social: '#8E6BB0',
-  moi: '#D46A8C',
-  sante: '#3E9C9B',
-  cycle: '#C0395A',
-  soin: '#E0789E',
-  maison: '#C7A0C9',
-  travail: '#81265D',
-  etudes: '#8E6BB0',
-  autres: '#9C8A96',
-};
 
 /** Anneau SVG : chaque part = une valeur. */
 function Donut({ parts, size = 132, center }: { parts: { value: number; color: string; label: string }[]; size?: number; center?: ReactNode }) {
@@ -54,31 +44,43 @@ function Donut({ parts, size = 132, center }: { parts: { value: number; color: s
   );
 }
 
-function Bars({ data, color = 'rgb(var(--c-rasp))', format = (v: number) => String(v), testid }: { data: { label: string; value: number }[]; color?: string; format?: (v: number) => string; testid?: string }) {
-  const max = Math.max(1, ...data.map((d) => d.value));
+function Bars({ data, color = 'rgb(var(--c-rasp))', format = (v: number) => String(v), testid, partialLast }: { data: { label: string; value: number | null }[]; color?: string; format?: (v: number) => string; testid?: string; partialLast?: boolean }) {
+  const max = Math.max(1, ...data.map((d) => d.value || 0));
   return (
     <div className="flex h-36 items-end gap-1.5" data-testid={testid}>
       {data.map((d, i) => (
         <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-          <div className="text-[10px] font-semibold text-plum">{d.value ? format(d.value) : ''}</div>
-          <div className="w-full rounded-t-lg transition-all duration-700" style={{ height: `${Math.max(3, (d.value / max) * 96)}px`, background: color, opacity: i === data.length - 1 ? 1 : 0.55 }} />
-          <div className="max-w-full truncate text-[10px] text-soft">{d.label}</div>
+          <div className="text-[10px] font-semibold text-plum">{d.value === null ? '–' : d.value ? format(d.value) : '0'}</div>
+          {d.value === null ? (
+            <div className="h-[3px] w-full rounded-t-lg border-t border-dashed border-mauve" title="pas de données" />
+          ) : (
+            <div
+              className={`w-full rounded-t-lg transition-all duration-700 ${partialLast && i === data.length - 1 ? 'border-2 border-dashed border-white/70' : ''}`}
+              style={{ height: `${Math.max(3, (d.value / max) * 96)}px`, background: color, opacity: i === data.length - 1 ? 1 : 0.55 }}
+            />
+          )}
+          <div className="max-w-full truncate text-[10px] text-soft">
+            {d.label}
+            {partialLast && i === data.length - 1 ? '*' : ''}
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-function Delta({ cur, prev, unit = 'j' }: { cur: number; prev: number; unit?: string }) {
-  const d = Math.round((cur - prev) * 10) / 10;
-  if (!d) return <span className="text-[10px] text-soft">= période préc.</span>;
+/** Écart avec la période précédente, ramené au même nombre de jours renseignés (sinon un mois en cours paraît toujours « en baisse »). */
+function Delta({ cur, prev, unit = 'j' }: { cur: number; prev: number | null; unit?: string }) {
+  if (prev === null) return <span className="text-[10px] text-soft">pas de point de comparaison</span>;
+  const d = Math.round(cur - prev);
+  if (!d) return <span className="text-[10px] text-soft">comme d’habitude</span>;
   const up = d > 0;
   return (
     <span className="inline-flex items-center gap-0.5 text-[10px] text-soft">
       {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
       {up ? '+' : ''}
       {String(d).replace('.', ',')}
-      {unit} vs préc.
+      {unit} vs période préc.
     </span>
   );
 }
@@ -98,7 +100,8 @@ const trackerCount = (x: Analytics, id: string): Count => {
   return { days: p?.days || 0, freq: p?.freq || 0 };
 };
 
-type Metric = { id: string; label: string; fn: (a: Analytics) => number; format?: (v: number) => string; color: string };
+type Metric = { id: string; label: string; fn: (a: Analytics) => number | null; format?: (v: number) => string; color: string; days?: boolean };
+const orNull = (v?: number) => (v === undefined ? null : v);
 
 export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLog[]; trackers: Tracker[]; contacts: Contact[]; today: ISODate }) {
   const [kind, setKind] = useState<PeriodKind>('month');
@@ -107,35 +110,57 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
   const [focus, setFocus] = useState<string | null>(null);
   const [metricId, setMetricId] = useState('outings');
   const expenses = useLiveQuery(() => db.expenses.toArray(), [], EMPTY);
+  const finance = useFinance();
+  const habitsRaw = useSetting<HabitSetting[]>('habits', DEFAULT_HABITS);
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], EMPTY);
   const categories = useLiveQuery(() => db.categories.toArray(), [], EMPTY);
   const period = useMemo(() => periodOf(kind, anchor), [kind, anchor]);
   const agendaIn = useMemo(() => ({ tasks, categories }), [tasks, categories]);
   const a = useMemo(() => analyze(period, logs, trackers, contacts, expenses, today, group, agendaIn), [period, logs, trackers, contacts, expenses, today, group, agendaIn]);
   const prev = useMemo(() => analyze(shiftPeriod(period, -1), logs, trackers, contacts, expenses, today, group, agendaIn), [period, logs, trackers, contacts, expenses, today, group, agendaIn]);
+  const history = useMemo(
+    () => [1, 2, 3].map((i) => analyze(shiftPeriod(period, -i), logs, trackers, contacts, expenses, today, null, agendaIn)).filter((h) => h.elapsed > 0),
+    [period, logs, trackers, contacts, expenses, today, agendaIn],
+  );
+  const review = useMemo(() => {
+    const full = group ? analyze(period, logs, trackers, contacts, expenses, today, null, agendaIn) : a;
+    const budget = period.kind === 'month' ? monthSummary(finance, monthOf(period.from), { today }).byCategory : undefined;
+    return buildReview(full, history, { habits: habitsOver(full, normalizeHabits(habitsRaw)), budget });
+  }, [a, group, period, logs, trackers, contacts, expenses, today, agendaIn, finance, history, habitsRaw]);
+  const crossEnd = period.to < today ? period.to : today;
+  const cross = useMemo(() => crossings(logs, trackers, crossEnd), [logs, trackers, crossEnd]);
+  const poles = useMemo(() => balance(a, trackers, history), [a, trackers, history]);
   const isFuture = period.from > today;
+  const inProgress = period.from <= today && period.to >= today;
+  /** Rythme de la période précédente ramené aux jours renseignés de celle-ci. */
+  const prorata = (prevDays: number) => (prev.logged >= 5 && a.logged > 0 ? (prevDays / prev.logged) * a.logged : null);
   const usedGroups = GROUP_ORDER.filter((g) => trackers.some((t) => t.group === g));
 
   const metrics: Metric[] = [
-    { id: 'outings', label: 'Sorties', fn: (x) => x.key.outings.days, color: '#A83278' },
-    { id: 'hendaye', label: 'HENDAYE', fn: (x) => x.key.hendaye.days, color: '#81265D' },
-    { id: 'mood', label: 'Humeur moy.', fn: (x) => x.moodAvg || 0, format: (v) => String(v).replace('.', ','), color: '#D46A8C' },
-    { id: 'spent', label: 'Dépenses sorties', fn: (x) => x.spent.total, format: (v) => `${Math.round(v)}€`, color: '#C98A4B' },
-    { id: 'work', label: 'Travail', fn: (x) => x.key.work.days, color: '#81265D' },
-    { id: 'sport', label: 'Sport', fn: (x) => x.key.sport.days, color: '#4E9A6A' },
-    { id: 'social', label: 'Vie sociale', fn: (x) => x.key.social.days, color: '#8E6BB0' },
-    { id: 'score', label: 'Note des journées', fn: (x) => x.score.avg || 0, format: (v) => `${String(v).replace('.', ',')}`, color: '#A83278' },
-    { id: 'rated', label: 'Note des sorties', fn: (x) => x.rated.avg || 0, format: (v) => `${String(v).replace('.', ',')}`, color: '#D46A8C' },
-    { id: 'sleep', label: 'Sommeil moy.', fn: (x) => Math.round(((x.sleep.avgMin || 0) / 60) * 10) / 10, format: (v) => `${String(v).replace('.', ',')}h`, color: '#5B6FB5' },
-    { id: 'fmj', label: 'Five Minute Journal', fn: (x) => x.fmj.days, color: '#E0789E' },
+    { id: 'outings', label: 'Jours de sortie', fn: (x) => x.key.outings.days, color: '#A83278', days: true },
+    { id: 'hendaye', label: 'HENDAYE', fn: (x) => x.key.hendaye.days, color: '#81265D', days: true },
+    { id: 'mood', label: 'Humeur moyenne', fn: (x) => orNull(x.moodAvg), format: (v) => String(v).replace('.', ','), color: '#D46A8C' },
+    { id: 'spent', label: 'Dépenses du journal', fn: (x) => x.spent.total, format: (v) => `${Math.round(v)}€`, color: '#C98A4B' },
+    { id: 'work', label: 'Travail', fn: (x) => x.key.work.days, color: '#81265D', days: true },
+    { id: 'sport', label: 'Sport', fn: (x) => x.key.sport.days, color: '#4E9A6A', days: true },
+    { id: 'social', label: 'Avec mes proches', fn: (x) => x.key.social.days, color: '#8E6BB0', days: true },
+    { id: 'score', label: 'Note des journées', fn: (x) => orNull(x.score.avg), format: (v) => `${String(v).replace('.', ',')}`, color: '#A83278' },
+    { id: 'rated', label: 'Note des sorties', fn: (x) => orNull(x.rated.avg), format: (v) => `${String(v).replace('.', ',')}`, color: '#D46A8C' },
+    { id: 'sleep', label: 'Sommeil moyen', fn: (x) => (x.sleep.avgMin === undefined ? null : Math.round((x.sleep.avgMin / 60) * 10) / 10), format: (v) => `${String(v).replace('.', ',')}h`, color: '#5B6FB5' },
+    { id: 'fmj', label: 'Five Minute Journal', fn: (x) => x.fmj.days, color: '#E0789E', days: true },
     { id: 'completion', label: 'Journal rempli', fn: (x) => Math.round(x.completion * 100), format: (v) => `${v}%`, color: '#C7A0C9' },
   ];
   const focusTracker = trackers.find((t) => t.id === focus);
   const metric: Metric = focusTracker
-    ? { id: focusTracker.id, label: focusTracker.name, fn: (x) => x.perTracker.find((p) => p.tracker.id === focusTracker.id)?.days || 0, color: focusTracker.color }
+    ? { id: focusTracker.id, label: focusTracker.name, fn: (x) => x.perTracker.find((p) => p.tracker.id === focusTracker.id)?.days || 0, color: focusTracker.color, days: true }
     : metrics.find((m) => m.id === metricId) || metrics[0];
   const series = useMemo(
-    () => trend(kind, anchor, kind === 'year' ? 4 : 6, (p) => metric.fn(analyze(p, logs, trackers, contacts, expenses, today, group))),
+    () =>
+      trend(kind, anchor, kind === 'year' ? 4 : 6, (p) => {
+        const x = analyze(p, logs, trackers, contacts, expenses, today, group);
+        // Une période sans aucun jour renseigné n'est pas un zéro : c'est une absence de données.
+        return x.logged === 0 && metric.id !== 'spent' ? null : metric.fn(x);
+      }),
     [kind, anchor, metric.id, logs, trackers, contacts, expenses, today, group],
   );
 
@@ -157,11 +182,6 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
   ].filter((t) => t.always || t.c.days || t.p.days);
 
   const moodTop = a.dominantMood ? MOODS[a.dominantMood - 1] : undefined;
-  const groupParts = GROUP_ORDER.map((g) => ({
-    label: GROUP_LABEL[g],
-    color: GROUP_COLOR[g],
-    value: a.perTracker.filter((p) => p.tracker.group === g).reduce((s, p) => s + p.count, 0),
-  })).filter((p) => p.value > 0);
 
   return (
     <div className="space-y-6" data-testid="analytics">
@@ -206,6 +226,8 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
         <p className="text-center text-sm text-soft">Cette période n'a pas encore commencé.</p>
       ) : (
         <>
+          <ReviewCard r={review} />
+
           <Wrapped a={a} prev={prev} />
 
           <div className="card space-y-2 p-4" data-testid="completion">
@@ -217,7 +239,8 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
             </div>
             <Progress value={a.completion * 100} />
             <p className="text-[11px] leading-snug text-soft">
-              Un jour non renseigné n'est pas un jour « sans activité ». Les pourcentages de jours se calculent sur les {a.elapsed} jours écoulés de la période.
+              Un jour non renseigné n'est pas un jour « sans activité ». Les pourcentages se calculent sur les {a.elapsed} jours écoulés
+              {a.elapsed < diffDays(period.to < today ? period.to : today, period.from) + 1 ? ' depuis que tu utilises ton journal' : ''}.
             </p>
           </div>
 
@@ -233,12 +256,14 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                     </span>
                   </div>
                   <div className={t.dark ? '[&_*]:!text-white/80' : ''}>
-                    <Delta cur={t.c.days} prev={t.p.days} />
+                    <Delta cur={t.c.days} prev={prorata(t.p.days)} />
                   </div>
                 </div>
               ))}
             </div>
-            <p className="text-[11px] text-soft">« % » = part des jours de la période où c'est arrivé. Plusieurs activités par jour : le total ne fait pas 100 %. Ce n'est jamais du temps passé.</p>
+            <p className="text-[11px] text-soft">
+              « % » = part des jours écoulés où c'est arrivé (plusieurs activités par jour : le total ne fait pas 100 %). La comparaison se fait au même nombre de jours renseignés que la période précédente.
+            </p>
           </Section>
 
           <Section title="Humeurs et états">
@@ -323,36 +348,28 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                   </button>
                 ))}
               </div>
-              <Bars data={series} color={metric.color} format={metric.format} testid="trend" />
+              <Bars data={series} color={metric.color} format={metric.format} testid="trend" partialLast={inProgress} />
               <p className="text-[11px] text-soft">
-                {metric.label} sur les {series.length} dernières périodes{metric.id === 'mood' || metric.id === 'completion' || metric.id === 'spent' ? '' : ' (en jours)'}.
+                {metric.label} sur les {series.length} dernières périodes{metric.days ? ' (en jours)' : ''}. « – » : aucune donnée sur la période.
+                {inProgress ? ' * période en cours, pas encore complète.' : ''}
               </p>
             </div>
           </Section>
 
-          {groupParts.length > 0 && (
-            <Section title="Répartition des activités">
-              <div className="card flex flex-wrap items-center gap-5 p-4">
-                <Donut
-                  parts={groupParts}
-                  center={
-                    <>
-                      <span className="font-serif text-2xl font-semibold text-plum">{a.totalActivities}</span>
-                      <span className="text-[10px] text-soft">activités</span>
-                    </>
-                  }
-                />
-                <div className="min-w-[9rem] flex-1 space-y-1">
-                  {groupParts.map((p) => (
-                    <div key={p.label} className="flex items-center gap-2 text-sm">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} />
-                      <span className="flex-1">{p.label}</span>
-                      <span className="text-soft">{fmtPct(p.value / Math.max(1, a.totalActivities))}</span>
-                    </div>
-                  ))}
-                </div>
+          {a.logged > 0 && <BalanceSection poles={poles} logged={a.logged} />}
+
+          {cross.length > 0 && (
+            <Section title="Ce que je remarque">
+              <div className="card space-y-2 p-3" data-testid="crossings">
+                {cross.map((c) => (
+                  <p key={c.id} className="rounded-xl bg-blush/50 px-3 py-2 text-sm text-plum">
+                    {c.text}
+                  </p>
+                ))}
+                <p className="text-[11px] text-soft">
+                  Sur tes {CROSS.days} derniers jours, seulement quand l'écart est net et qu'il y a au moins 8 jours de chaque côté. Ce sont des observations, pas des causes : un jour de sport est peut-être aussi un jour où tu avais plus de temps.
+                </p>
               </div>
-              <p className="text-[11px] text-soft">Part de chaque famille parmi les {a.totalActivities} activités enregistrées (le total fait 100 %).</p>
             </Section>
           )}
 
@@ -362,7 +379,6 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                 <span className="flex-1">Activité</span>
                 <span className="w-12 text-right">jours</span>
                 <span className="w-14 text-right">% jours</span>
-                <span className="w-16 text-right">% activités</span>
               </div>
               {a.perTracker
                 .filter((p) => p.days > 0)
@@ -382,7 +398,6 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                     </span>
                     <span className="w-12 text-right">{p.days}</span>
                     <span className="w-14 text-right text-soft">{fmtPct(p.freq)}</span>
-                    <span className="w-16 text-right text-soft">{fmtPct(p.share)}</span>
                   </button>
                 ))}
               {a.totalActivities === 0 && <p className="py-3 text-center text-sm text-soft">Aucune activité sur cette période.</p>}
@@ -705,9 +720,10 @@ function WellbeingSections({ a, prev }: { a: Analytics; prev: Analytics }) {
   );
 }
 
-/** Ce que j'avais prévu : rendez-vous et tâches de l'agenda sur la période. */
+/** Ce que j'ai vécu de mon agenda : seuls les rendez-vous qui ont eu lieu comptent. */
 function AgendaSection({ a }: { a: Analytics }) {
   const g = a.agenda!;
+  const lost = g.cancelled + g.noshow;
   return (
     <Section title="Mon agenda">
       <div className="card space-y-3 p-4" data-testid="agenda-stats">
@@ -716,7 +732,7 @@ function AgendaSection({ a }: { a: Analytics }) {
             <div className="font-serif text-2xl font-semibold text-plum" data-testid="agenda-events">
               {g.events}
             </div>
-            <div className="text-[10px] uppercase tracking-wider text-soft">rendez-vous</div>
+            <div className="text-[10px] uppercase tracking-wider text-soft">rendez-vous vécus</div>
           </div>
           <div>
             <div className="font-serif text-2xl font-semibold text-plum" data-testid="agenda-done">
@@ -726,13 +742,16 @@ function AgendaSection({ a }: { a: Analytics }) {
           </div>
           <div>
             <div className="font-serif text-2xl font-semibold text-plum">{g.upcoming}</div>
-            <div className="text-[10px] uppercase tracking-wider text-soft">rdv à venir</div>
+            <div className="text-[10px] uppercase tracking-wider text-soft">à venir</div>
           </div>
         </div>
         {g.tasks > 0 && <Progress value={g.doneRate * 100} />}
-        <p className="text-[11px] text-soft">
-          {fmtPct(g.doneRate)} des tâches prévues jusqu'à aujourd'hui sont faites
-          {g.postponed ? ` · ${g.postponed} reportée${g.postponed > 1 ? 's' : ''}` : ''} · {g.eventDays} jour{g.eventDays > 1 ? 's' : ''} avec au moins un rendez-vous ({fmtPct(g.eventDays / Math.max(1, a.elapsed))}).
+        <p className="text-[11px] leading-snug text-soft" data-testid="agenda-detail">
+          {g.planned} rendez-vous prévus : {g.events} ont eu lieu
+          {lost ? `, ${g.cancelled} annulé${g.cancelled > 1 ? 's' : ''}, ${g.noshow} pas honoré${g.noshow > 1 ? 's' : ''}` : ''}
+          {g.unconfirmed ? `, ${g.unconfirmed} à confirmer (pas encore comptés)` : ''}.
+          {g.tasks > 0 ? ` ${fmtPct(g.doneRate)} des tâches prévues jusqu'à aujourd'hui sont faites${g.doneLate ? `, dont ${g.doneLate} après un report` : ''}.` : ''}
+          {g.dropped ? ` ${g.dropped} retirée${g.dropped > 1 ? 's' : ''} car plus nécessaire${g.dropped > 1 ? 's' : ''} (non comptée${g.dropped > 1 ? 's' : ''}).` : ''} Une tâche reportée compte pour le jour où elle était prévue au départ.
         </p>
         {g.byCategory.length > 0 && (
           <div className="space-y-1.5 border-t border-line/60 pt-2">
@@ -751,9 +770,74 @@ function AgendaSection({ a }: { a: Analytics }) {
         )}
         {g.moodWithEvents !== undefined && g.moodWithout !== undefined && (
           <p className="rounded-xl bg-blush/50 px-3 py-2 text-xs text-plum" data-testid="agenda-mood">
-            Humeur moyenne les jours avec rendez-vous : <b>{n1(g.moodWithEvents)}/5</b> · sans : <b>{n1(g.moodWithout)}/5</b>
+            Humeur moyenne les jours avec un rendez-vous vécu : <b>{n1(g.moodWithEvents)}/5</b> ({g.moodWithN} j) · sans : <b>{n1(g.moodWithout)}/5</b> ({g.moodWithoutN} j). Une observation, pas une cause.
           </p>
         )}
+      </div>
+    </Section>
+  );
+}
+
+/** Mon mois en bref : quatre blocs courts, des phrases plutôt que des chiffres. */
+function ReviewCard({ r }: { r: Review }) {
+  const blocks: [string, string[], string][] = [
+    ['Comment je l’ai vécu', r.lived, 'review-lived'],
+    ['Ce que j’ai accompli', r.done, 'review-done'],
+    ['Ce que j’ai laissé de côté', r.aside, 'review-aside'],
+    ['Mon argent', r.money, 'review-money'],
+    ['Des pistes', r.ideas, 'review-ideas'],
+  ];
+  const any = blocks.some(([, l]) => l.length);
+  return (
+    <div className="card space-y-3 p-4" data-testid="review">
+      <div>
+        <div className="font-serif text-2xl font-semibold text-plum">{r.title}</div>
+        {r.coverage.text && (
+          <p className={`mt-0.5 text-xs ${r.coverage.partial ? 'text-rasp' : 'text-soft'}`} data-testid="review-coverage">
+            {r.coverage.text}
+          </p>
+        )}
+      </div>
+      {!any && <p className="text-sm text-soft">Pas encore assez de jours notés pour un bilan. Reviens dans quelques jours.</p>}
+      {blocks.map(([title, lines, id]) =>
+        lines.length ? (
+          <div key={id} className="space-y-1" data-testid={id}>
+            <div className="label">{title}</div>
+            {lines.map((l, i) => (
+              <p key={i} className="text-sm leading-snug">
+                {l}
+              </p>
+            ))}
+          </div>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+/** Équilibre : quatre pôles en part des jours renseignés, avec le repère habituel. */
+function BalanceSection({ poles, logged }: { poles: PoleStat[]; logged: number }) {
+  return (
+    <Section title="Mon équilibre">
+      <div className="card space-y-2.5 p-3" data-testid="balance">
+        {poles.map((p) => (
+          <div key={p.id} className="space-y-1" data-testid={`pole-${p.id}`}>
+            <div className="flex items-baseline justify-between text-sm">
+              <span>{p.label}</span>
+              <span className="text-xs text-soft">
+                {p.days} j · {fmtPct(p.share)}
+                {p.usual !== undefined ? ` · d'habitude ${fmtPct(p.usual)}` : ''}
+              </span>
+            </div>
+            <div className="relative h-2 rounded-full bg-blush">
+              <div className="h-2 rounded-full" style={{ width: `${Math.min(100, p.share * 100)}%`, background: p.color }} />
+              {p.usual !== undefined && <span className="absolute -top-0.5 h-3 w-0.5 rounded bg-plum" style={{ left: `${Math.min(100, p.usual * 100)}%` }} title="d'habitude" />}
+            </div>
+          </div>
+        ))}
+        <p className="text-[11px] text-soft">
+          Part de tes {logged} jours renseignés où chaque pôle apparaît au moins une fois. Le trait indique ton habitude (médiane des 3 périodes précédentes). Pas de note globale : c'est à toi de voir ce qui te convient.
+        </p>
       </div>
     </Section>
   );

@@ -6,6 +6,7 @@ import { addDays, fmt, relativeDay, todayISO } from '../lib/dates';
 import { useCategories, useProjects } from '../lib/hooks';
 import { parseQuick } from '../lib/parse';
 import { describeRecurrence } from '../lib/recurrence';
+import { OUTCOME_LABEL, moveJournalWithEvent, setOutcome } from '../lib/agenda';
 import { PRIORITY_LABEL, deleteTask, materialize, type TaskView } from '../lib/tasks';
 import { closeEditor } from '../lib/ui-store';
 import { Icon } from '../lib/icons';
@@ -15,6 +16,23 @@ type RecMode = 'none' | Freq | 'custom';
 
 const WD_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const WD_VALUES = [1, 2, 3, 4, 5, 6, 0];
+
+const EDITABLE: (keyof Task)[] = ['title', 'description', 'categoryId', 'priority', 'date', 'time', 'duration', 'dueDate', 'targetMonth', 'location', 'subtasks', 'recurrence', 'projectId', 'milestoneId', 'autoPostpone', 'remindBefore', 'kind', 'status', 'outcome'];
+/** Les champs modifiés dans le formulaire (undefined = effacé). */
+function diff(before: Partial<Task>, after: Partial<Task>): Partial<Task> {
+  const out: Partial<Task> = {};
+  for (const k of EDITABLE) if (JSON.stringify(before[k] ?? null) !== JSON.stringify(after[k] ?? null)) (out as any)[k] = after[k];
+  return out;
+}
+/** Ce qui peut s'appliquer à toute une série : jamais la date, l'état ou l'issue d'une occurrence, ni la suppression de la règle. */
+function seriesPatch(changed: Partial<Task>): Partial<Task> {
+  const keep: (keyof Task)[] = ['title', 'description', 'categoryId', 'priority', 'time', 'duration', 'location', 'projectId', 'milestoneId', 'autoPostpone', 'remindBefore'];
+  const out: Partial<Task> = {};
+  for (const k of keep) if (k in changed) (out as any)[k] = changed[k];
+  if ('subtasks' in changed) out.subtasks = (changed.subtasks || []).map((x) => ({ ...x, done: false }));
+  if (changed.recurrence) out.recurrence = changed.recurrence;
+  return out;
+}
 
 export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Partial<TaskView> }) {
   const isNew = !task;
@@ -74,25 +92,28 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
     if (data.kind === 'event' && !data.date) data.date = today;
     if (data.date) data.targetMonth = data.targetMonth && !data.date ? data.targetMonth : undefined;
 
+    // Un rendez-vous ajouté après coup (date passée) a forcément eu lieu.
+    if (isNew && data.kind === 'event' && data.date && data.date < today && !data.outcome) data.outcome = 'happened';
+
     if (isNew) {
-      await create<Task>('tasks', data as any);
-      toast(isEvent ? 'Rendez-vous ajouté' : data.date ? `Tâche ajoutée · ${relativeDay(data.date, today)}` : 'Tâche ajoutée à la boîte de réception');
-    } else if (task!.virtual) {
-      if (applySeries && series) {
-        const { date: _d, status: _s, id: _i, seriesId: _se, occurrenceDate: _o, ...rest } = data as any;
-        await update<Task>('tasks', series, rest);
-        if (data.date !== task!.occurrenceDate) await materialize(task!, { date: data.date });
-      } else {
-        const { id: _i, ...rest } = data as any;
-        await materialize(task!, rest);
-      }
+      const saved = await create<Task>('tasks', data as any);
+      if (saved.outcome === 'happened') await setOutcome(saved, 'happened');
+      toast(isEvent ? (data.date && data.date < today ? 'Rendez-vous ajouté à ton historique' : 'Rendez-vous ajouté') : data.date ? `Tâche ajoutée · ${relativeDay(data.date, today)}` : 'Tâche ajoutée à « Plus tard »');
     } else {
-      const { id: _i, createdAt: _c, updatedAt: _u, _ts, virtual: _v, ...rest } = data as any;
-      await update<Task>('tasks', task!.id, rest);
-      if (applySeries && series) {
-        const { date: _d, status: _s, seriesId: _se, occurrenceDate: _o, postponeHistory: _p, originalDate: _od, ...srest } = rest;
-        await update<Task>('tasks', series, srest);
+      // Seuls les champs réellement modifiés sont envoyés : un « fait » coché sur un autre appareil n'est jamais écrasé.
+      const changed = diff(task!, data);
+      if (task!.virtual) {
+        if (applySeries && series) {
+          await update<Task>('tasks', series, seriesPatch(changed));
+          if (data.date !== task!.occurrenceDate) await materialize(task!, { date: data.date });
+        } else await materialize(task!, changed);
+      } else {
+        if (Object.keys(changed).length) await update<Task>('tasks', task!.id, changed);
+        if (applySeries && series) await update<Task>('tasks', series, seriesPatch(changed));
       }
+      const after = await db.tasks.get(task!.id);
+      if (after && 'date' in changed) await moveJournalWithEvent(after, task!.date);
+      if (after && 'outcome' in changed && after.kind === 'event') await setOutcome(after, after.outcome);
     }
     closeEditor();
   };
@@ -110,7 +131,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
   const dateChips: { label: string; value?: string }[] = [
     { label: "Aujourd'hui", value: today },
     { label: 'Demain', value: addDays(today, 1) },
-    { label: 'Sans date', value: undefined },
+    { label: 'Plus tard', value: undefined },
   ];
 
   return (
@@ -147,6 +168,19 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
               Supprimer la série
             </ConfirmButton>
           )}
+          {!isNew && !isEvent && !task!.outcome && task!.status !== 'done' && (
+            <button
+              className="btn-ghost text-xs"
+              onClick={async () => {
+                await setOutcome(task!, 'dropped');
+                closeEditor();
+                toast('Retirée de ta liste. Elle reste dans ton historique.', { label: 'Annuler', run: () => setOutcome({ ...task!, virtual: false }, undefined) });
+              }}
+              data-testid="drop-task"
+            >
+              Plus nécessaire
+            </button>
+          )}
           <button className="btn-primary ml-auto px-6" onClick={save} data-testid="save-task">
             {isNew ? 'Ajouter' : 'Enregistrer'}
           </button>
@@ -174,7 +208,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
           <input
             ref={titleRef}
             className="input text-lg"
-            placeholder={isEvent ? 'Ex : Dentiste demain 14h30' : 'Ex : Appeler la banque demain !'}
+            placeholder={isEvent ? 'Ex : Dîner avec Léa vendredi 20h' : 'Ex : Faire le virement du loyer demain !'}
             value={f.title || ''}
             onChange={(e) => set({ title: e.target.value })}
             enterKeyHint="done"
@@ -184,7 +218,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
           {preview && (preview.date || preview.time || preview.priority) && (
             <p className="mt-1.5 text-xs text-rasp">
               Compris : {preview.date ? relativeDay(preview.date, today) : ''} {preview.time ? `à ${preview.time}` : ''}{' '}
-              {preview.priority === 'must' ? '· à faire absolument' : ''}
+              {preview.priority ? `· ${PRIORITY_LABEL[preview.priority].toLowerCase()}` : ''}
             </p>
           )}
         </div>
@@ -217,6 +251,18 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
               </button>
             ))}
           </div>
+        )}
+
+        {isEvent && f.date && f.date <= today && (
+          <Field label="Ça s'est passé ?" group>
+            <div className="flex flex-wrap gap-2">
+              {(['happened', 'cancelled', 'noshow'] as const).map((o) => (
+                <button type="button" key={o} className={`chip ${f.outcome === o ? 'chip-on' : ''}`} onClick={() => set({ outcome: f.outcome === o ? undefined : o })} data-testid={`editor-outcome-${o}`}>
+                  {OUTCOME_LABEL[o]}
+                </button>
+              ))}
+            </div>
+          </Field>
         )}
 
         {(isEvent || more) && (
@@ -418,7 +464,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
             )}
             {task?.originalDate && (
               <p className="text-xs text-soft">
-                Prévue initialement le {fmt(task.originalDate, 'd MMMM')} · reportée {task.postponeHistory?.length || 0} fois
+                Prévue au départ le {fmt(task.originalDate, 'd MMMM')} · reportée {Math.max(task.postponeCount || 0, task.postponeHistory?.length || 0)} fois
               </p>
             )}
           </div>

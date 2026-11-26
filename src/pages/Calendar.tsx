@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, FolderHeart, Inbox, Plus, Target } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { PaymentsList, Planning, PriorityBoard, TaskList, quickMove, type DayCtx } from '../components/DayViews';
+import { DayAgenda, PaymentsList, Planning, PriorityBoard, TaskList, quickMove, type DayCtx } from '../components/DayViews';
 import { TaskItem } from '../components/TaskItem';
 import { Empty, Progress, Section, Segmented } from '../components/ui';
 import type { ISODate, Task } from '../db/types';
@@ -19,7 +19,7 @@ import {
 } from '../lib/dates';
 import { eur, financeOccurrencesIn, togglePayment } from '../lib/finance';
 import { useAllTasks, useCategoryMap, useFinance, useMedia, useProjects, useToday } from '../lib/hooks';
-import { expandTasks, type TaskView } from '../lib/tasks';
+import { expandTasks, isOpen, type TaskView } from '../lib/tasks';
 import { navigate, openEditor, useRoute } from '../lib/ui-store';
 
 type Mode = 'day' | 'week' | 'month' | 'inbox';
@@ -60,7 +60,7 @@ export function CalendarPage() {
         ? `Semaine du ${fmt(weekStart(sel), 'd MMM')}`
         : mode === 'month'
           ? fmtMonth(monthOf(sel))
-          : 'Boîte de réception';
+          : 'Plus tard';
 
   return (
     <div className="space-y-5">
@@ -88,7 +88,7 @@ export function CalendarPage() {
             { value: 'day', label: 'Jour' },
             { value: 'week', label: 'Semaine' },
             { value: 'month', label: 'Mois' },
-            { value: 'inbox', label: <span className="inline-flex items-center justify-center gap-1" aria-label="Sans date"><Inbox size={15} /><span className="hidden sm:inline">Sans date</span></span> },
+            { value: 'inbox', label: <span className="inline-flex items-center justify-center gap-1" aria-label="Plus tard"><Inbox size={15} /><span>Plus tard</span></span> },
           ]}
         />
       </header>
@@ -114,7 +114,7 @@ export function CalendarPage() {
 function DayView({ date, all, ctx, finance }: { date: ISODate; all: Task[]; ctx: DayCtx; finance: ReturnType<typeof useFinance> }) {
   const [sub, setSub] = useState<'planning' | 'list' | 'priorities'>('planning');
   const day = useMemo(() => expandTasks(all, date, date), [all, date]);
-  const due = all.filter((t) => !t.deleted && t.dueDate === date && t.status !== 'done');
+  const due = all.filter((t) => isOpen(t) && t.dueDate === date);
   const pay = financeOccurrencesIn(finance, date, date);
   return (
     <div className="space-y-5">
@@ -139,7 +139,7 @@ function DayView({ date, all, ctx, finance }: { date: ISODate; all: Task[]; ctx:
         </Section>
       )}
       {sub === 'planning' && <Planning tasks={day} ctx={ctx} date={date} />}
-      {sub === 'list' && <TaskList tasks={day} ctx={ctx} empty="Rien de prévu ce jour-là" />}
+      {sub === 'list' && <DayAgenda tasks={day} ctx={ctx} empty="Rien de prévu ce jour-là." />}
       {sub === 'priorities' && <PriorityBoard tasks={day} ctx={ctx} />}
       <button className="btn-soft" onClick={() => openEditor({ type: 'task', defaults: { date } })}>
         <Plus size={16} /> Ajouter ce jour-là
@@ -221,7 +221,7 @@ function WeekView({
             {items.map((t) => (
               <div key={t.id} className="group relative">
                 <TaskItem t={t} today={ctx.today} cat={t.categoryId ? ctx.cats.get(t.categoryId) : undefined} compact />
-                {t.kind === 'task' && t.status !== 'done' && (
+                {t.kind === 'task' && isOpen(t) && (
                   <div className={`absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5 ${wide ? 'opacity-0 group-hover:opacity-100' : ''}`}>
                     <button
                       className="flex h-7 w-7 items-center justify-center rounded-full bg-blush text-plum"
@@ -286,7 +286,7 @@ function MonthView({
   // Objectifs du mois ; ceux des mois passés non terminés remontent dans le mois en cours (rien n'est oublié).
   const curMonth = monthOf(todayISO());
   const goals = all.filter(
-    (t) => !t.deleted && !t.date && !t.recurrence && (t.targetMonth === month || (month === curMonth && !!t.targetMonth && t.targetMonth < month && t.status !== 'done')),
+    (t) => !t.deleted && !t.date && !t.recurrence && (t.targetMonth === month || (month === curMonth && !!t.targetMonth && t.targetMonth < month && isOpen(t))),
   );
   const goalProjects = projectsArr.filter(
     (p) => p.status !== 'abandoned' && (p.targetMonth === month || (!p.targetMonth && p.dueDate && monthOf(p.dueDate) === month)),
@@ -399,14 +399,16 @@ function MonthView({
   );
 }
 
+const PRIO = { must: 0, should: 1, could: 2 };
+
 function InboxView({ all, ctx }: { all: Task[]; ctx: DayCtx }) {
   const items = all
-    .filter((t) => !t.deleted && !t.date && !t.targetMonth && t.status !== 'done' && !t.recurrence)
-    .sort((a, b) => b.createdAt - a.createdAt);
+    .filter((t) => isOpen(t) && !t.date && !t.targetMonth && !t.recurrence)
+    .sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999') || PRIO[a.priority] - PRIO[b.priority] || b.createdAt - a.createdAt);
   return (
     <div className="space-y-3">
-      <p className="text-sm text-soft">Les tâches sans date attendent ici. Planifie-les en un geste.</p>
-      {!items.length && <Empty icon={<Inbox size={20} />}>Ta boîte de réception est vide.</Empty>}
+      <p className="text-sm text-soft">Ce qui n'a pas de date, et ce qui était « sans urgence » et n'a pas été fait. Rien ne s'y accumule dans ta journée : tu choisis quand.</p>
+      {!items.length && <Empty icon={<Inbox size={20} />}>Rien en attente.</Empty>}
       {items.map((t) => (
         <div key={t.id} className="space-y-1.5">
           <TaskItem t={t} today={ctx.today} cat={t.categoryId ? ctx.cats.get(t.categoryId) : undefined} />

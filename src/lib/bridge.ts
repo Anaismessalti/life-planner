@@ -1,5 +1,5 @@
 // Passerelles entre l'agenda et le journal : un rendez-vous « Dîner avec Léa » devient, en un geste, une sortie du journal.
-import type { Contact, DayItem, Task, Tracker } from '../db/types';
+import type { Contact, DayItem, DayLog, Task, Tracker } from '../db/types';
 
 const norm = (s: string) =>
   s
@@ -85,5 +85,82 @@ export function mergeItem(items: DayItem[], add: DayItem): DayItem[] {
   );
 }
 
-/** Habitudes cochables depuis Aujourd'hui : activités du journal choisies dans Paramètres. */
-export const DEFAULT_HABITS = ['tr-skincare', 'tr-sport', 'tr-eau', 'tr-lecture', 'tr-meditation'];
+/** Habitudes : des activités du journal avec un objectif réaliste par semaine (jamais de série à perdre). */
+export type HabitSetting = string | { id: string; perWeek: number };
+export const DEFAULT_HABITS: HabitSetting[] = [
+  { id: 'tr-skincare', perWeek: 5 },
+  { id: 'tr-sport', perWeek: 3 },
+  { id: 'tr-lecture', perWeek: 3 },
+  { id: 'tr-meditation', perWeek: 2 },
+];
+export const MAX_HABITS = 5;
+/** Ce qu'on ne coche pas comme une réussite (états, écarts, cycle). */
+export const NOT_HABITS = new Set(['tr-pilule', 'tr-scroll', 'tr-craquage', 'tr-derive', 'tr-ex', 'tr-malade', 'tr-regles', 'tr-spm', 'tr-alcool', 'tr-match', 'tr-crush', 'tr-conge']);
+
+export function normalizeHabits(raw: unknown): { id: string; perWeek: number }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { id: string; perWeek: number }[] = [];
+  for (const h of raw) {
+    const id = typeof h === 'string' ? h : h && typeof h === 'object' && typeof (h as any).id === 'string' ? (h as any).id : undefined;
+    if (!id || out.some((x) => x.id === id)) continue;
+    const n = typeof h === 'object' ? Number((h as any).perWeek) : 3;
+    out.push({ id, perWeek: Number.isFinite(n) ? Math.max(1, Math.min(7, Math.round(n))) : 3 });
+  }
+  return out;
+}
+
+export type DayState = 'done' | 'logged' | 'empty' | 'soft' | 'future';
+export interface HabitWeek {
+  tracker: Tracker;
+  perWeek: number;
+  /** Objectif de la semaine, allégé par les journées douces. */
+  target: number;
+  done: number;
+  days: { date: string; state: DayState }[];
+  /** Pas faite depuis au moins 7 jours (et déjà faite avant) : on propose une reprise en douceur. */
+  comeback: boolean;
+}
+
+/**
+ * Trois états bien distincts par jour : fait, jour renseigné sans l'habitude, jour non renseigné.
+ * Une journée douce allège l'objectif de la semaine au prorata.
+ */
+export function weekStatus(habits: { id: string; perWeek: number }[], byDate: Map<string, DayLog>, today: string, trackers: Tracker[]): HabitWeek[] {
+  const start = weekStartISO(today);
+  const dates = Array.from({ length: 7 }, (_, i) => addDaysISO(start, i));
+  const softDays = dates.filter((d) => byDate.get(d)?.soft).length;
+  const out: HabitWeek[] = [];
+  for (const h of habits) {
+    const tracker = trackers.find((t) => t.id === h.id && !t.deleted);
+    if (!tracker) continue;
+    const has = (d: string) => !!byDate.get(d)?.items.some((i) => i.trackerId === h.id);
+    const days = dates.map((date) => {
+      const l = byDate.get(date);
+      const state: DayState = has(date) ? 'done' : date > today ? 'future' : l?.soft ? 'soft' : l && isLoggedDay(l) ? 'logged' : date === today ? 'future' : 'empty';
+      return { date, state };
+    });
+    let last: string | undefined;
+    for (const [d, l] of byDate) if (d <= today && l.items.some((i) => i.trackerId === h.id) && (!last || d > last)) last = d;
+    const target = Math.max(1, Math.ceil((h.perWeek * (7 - softDays)) / 7));
+    out.push({
+      tracker,
+      perWeek: h.perWeek,
+      target,
+      done: days.filter((d) => d.state === 'done').length,
+      days,
+      comeback: !!last && last < addDaysISO(today, -7) && !days.some((d) => d.state === 'done'),
+    });
+  }
+  return out;
+}
+
+const isLoggedDay = (l: DayLog) => l.items.length > 0 || (typeof l.mood === 'number' && l.mood >= 1) || (l.feelings?.length || 0) > 0 || !!l.text?.trim() || typeof l.score === 'number';
+function addDaysISO(s: string, n: number) {
+  const d = new Date(`${s}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function weekStartISO(s: string) {
+  const d = new Date(`${s}T12:00:00`);
+  return addDaysISO(s, -((d.getDay() + 6) % 7));
+}

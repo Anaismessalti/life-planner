@@ -3,7 +3,7 @@
 import type { Category, Contact, DayLog, Expense, ISODate, Task, Tracker, TrackerGroup } from '../db/types';
 import { addDays, addMonths, diffDays, fmt, fmtMonth, monthEnd, monthOf, monthStart, range, weekStart } from './dates';
 import { FEELINGS, formOf } from './lifeforms';
-import { expandTasks } from './tasks';
+import { expandTasks, isSeries, postponeCount } from './tasks';
 import { avgBedtime, eveningDone, morningDone, sleepMinutes } from './wellbeing';
 
 export type PeriodKind = 'week' | 'month' | 'year';
@@ -90,18 +90,31 @@ export interface Analytics {
   rated: { count: number; avg?: number; top: { date: ISODate; tracker: Tracker; rating: number; with: string[] }[]; byTracker: { tracker: Tracker; avg: number; count: number }[] };
   fmj: { mornings: number; evenings: number; days: number; gratitudes: number; breathe: number; recent: { date: ISODate; text: string }[] };
   /** Ce qui était prévu dans l'agenda (tâches et rendez-vous) sur la période. */
-  agenda?: {
-    events: number;
-    eventDays: number;
-    upcoming: number;
-    tasks: number;
-    done: number;
-    doneRate: number;
-    postponed: number;
-    byCategory: { id: string; name: string; color: string; events: number; tasks: number }[];
-    moodWithEvents?: number;
-    moodWithout?: number;
-  };
+  agenda?: AgendaStats;
+}
+
+export interface AgendaStats {
+  /** Rendez-vous qui ont réellement eu lieu (confirmés). */
+  events: number;
+  planned: number;
+  cancelled: number;
+  noshow: number;
+  /** Passés mais pas encore confirmés : listés, jamais comptés comme faits. */
+  unconfirmed: number;
+  eventDays: number;
+  upcoming: number;
+  /** Tâches prévues sur la période, au jour où elles étaient prévues au départ (hors « plus nécessaire »). */
+  tasks: number;
+  done: number;
+  doneLate: number;
+  dropped: number;
+  doneRate: number;
+  postponed: number;
+  byCategory: { id: string; name: string; color: string; events: number; tasks: number }[];
+  moodWithEvents?: number;
+  moodWithout?: number;
+  moodWithN: number;
+  moodWithoutN: number;
 }
 
 export interface AgendaInput {
@@ -111,16 +124,24 @@ export interface AgendaInput {
 
 const avg1 = (v: number[]) => (v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : undefined);
 
-export function agendaStats(period: Period, end: ISODate, input: AgendaInput, byDate: Map<ISODate, DayLog>): Analytics['agenda'] {
-  const all = expandTasks(input.tasks, period.from, period.to);
+/** Il faut au moins ce nombre de jours dans chaque groupe pour comparer deux moyennes d'humeur. */
+export const MIN_GROUP = 8;
+
+export function agendaStats(period: Period, end: ISODate, input: AgendaInput, byDate: Map<ISODate, DayLog>): AgendaStats {
   const cats = new Map(input.categories.filter((c) => !c.deleted).map((c) => [c.id, c]));
-  const past = all.filter((t) => t.date! <= end);
-  const events = past.filter((t) => t.kind === 'event');
-  const tasks = past.filter((t) => t.kind === 'task');
-  const done = tasks.filter((t) => t.status === 'done').length;
-  const eventDays = new Set(events.map((e) => e.date!));
+  const all = expandTasks(input.tasks, period.from, period.to);
+  const events = all.filter((t) => t.kind === 'event' && t.date! <= end);
+  const happened = events.filter((e) => e.outcome === 'happened');
+  // Une tâche compte pour le jour où elle était prévue au départ : un report ne la compte jamais deux fois.
+  const anchor = (t: Task) => t.originalDate || t.date;
+  const real = input.tasks.filter((t) => !t.deleted && !isSeries(t) && t.kind === 'task' && anchor(t) && anchor(t)! >= period.from && anchor(t)! <= end);
+  const virt = all.filter((t) => t.kind === 'task' && t.virtual && t.date! <= end);
+  const planned = [...real, ...virt];
+  const counted = planned.filter((t) => t.outcome !== 'dropped' && t.outcome !== 'skipped');
+  const done = counted.filter((t) => t.status === 'done');
+  const eventDays = new Set(happened.map((e) => e.date!));
   const byCat = new Map<string, { id: string; name: string; color: string; events: number; tasks: number }>();
-  for (const t of past) {
+  for (const t of [...happened, ...counted]) {
     const c = t.categoryId ? cats.get(t.categoryId) : undefined;
     const id = c?.id || '_none';
     const row = byCat.get(id) || { id, name: c?.name || 'Sans catégorie', color: c?.color || '#C7A0C9', events: 0, tasks: 0 };
@@ -134,23 +155,38 @@ export function agendaStats(period: Period, end: ISODate, input: AgendaInput, by
     if (typeof l.mood !== 'number' || l.mood < 1) continue;
     (eventDays.has(d) ? moodsWith : moodsWithout).push(l.mood);
   }
+  const enough = moodsWith.length >= MIN_GROUP && moodsWithout.length >= MIN_GROUP;
   return {
-    events: events.length,
+    events: happened.length,
+    planned: events.length,
+    cancelled: events.filter((e) => e.outcome === 'cancelled').length,
+    noshow: events.filter((e) => e.outcome === 'noshow').length,
+    unconfirmed: events.filter((e) => !e.outcome && e.date! < end).length,
     eventDays: eventDays.size,
-    upcoming: all.filter((t) => t.kind === 'event' && t.date! > end).length,
-    tasks: tasks.length,
-    done,
-    doneRate: pct(done, tasks.length),
-    postponed: past.filter((t) => (t.postponeHistory?.length || 0) > 0).length,
+    upcoming: all.filter((t) => t.kind === 'event' && t.date! > end && !t.outcome).length,
+    tasks: counted.length,
+    done: done.length,
+    doneLate: done.filter((t) => postponeCount(t) > 0).length,
+    dropped: planned.length - counted.length,
+    doneRate: pct(done.length, counted.length),
+    postponed: counted.filter((t) => postponeCount(t) > 0).length,
     byCategory: [...byCat.values()].sort((a, b) => b.events + b.tasks - (a.events + a.tasks)),
-    moodWithEvents: avg1(moodsWith),
-    moodWithout: avg1(moodsWithout),
+    moodWithEvents: enough ? avg1(moodsWith) : undefined,
+    moodWithout: enough ? avg1(moodsWithout) : undefined,
+    moodWithN: moodsWith.length,
+    moodWithoutN: moodsWithout.length,
   };
 }
 
 const pct = (a: number, b: number) => (b > 0 ? a / b : 0);
 
 /** Un jour compte comme « renseigné » dès qu'il contient une note, un état, une activité, un texte, sa nuit ou son Five Minute Journal. */
+export function firstUse(logs: DayLog[]): ISODate | undefined {
+  let f: ISODate | undefined;
+  for (const l of logs) if (isLogged(l) && (!f || l.date < f)) f = l.date;
+  return f;
+}
+
 export function isLogged(l: DayLog) {
   return (
     !l.deleted &&
@@ -177,7 +213,10 @@ export function analyze(
   agenda?: AgendaInput,
 ): Analytics {
   const end = period.to < today ? period.to : today;
-  const elapsed = end >= period.from ? diffDays(end, period.from) + 1 : 0;
+  // Les jours d'avant ta première utilisation du journal ne comptent pas comme « non renseignés ».
+  const first = firstUse(logs);
+  const start = first && first > period.from ? first : period.from;
+  const elapsed = end >= start ? diffDays(end, start) + 1 : 0;
   const live = trackers.filter((t) => !t.deleted && (!groupFilter || t.group === groupFilter));
   const byId = new Map(live.map((t) => [t.id, t]));
   const liveContacts = new Map(contacts.filter((c) => !c.deleted).map((c) => [c.id, c]));
@@ -252,7 +291,9 @@ export function analyze(
 
   const moodVals = inP.map((l) => l.mood).filter((m): m is number => typeof m === 'number' && m >= 1 && m <= 5);
   const moods = [1, 2, 3, 4, 5].map((v) => ({ value: v, days: moodVals.filter((m) => m === v).length }));
-  const dominant = moodVals.length ? [...moods].sort((a, b) => b.days - a.days || b.value - a.value)[0].value : undefined;
+  const mAvg = moodVals.length ? moodVals.reduce((a, b) => a + b, 0) / moodVals.length : 0;
+  // À égalité, l'humeur la plus proche de la moyenne (et non la plus haute) : pas de biais vers le positif.
+  const dominant = moodVals.length ? [...moods].sort((a, b) => b.days - a.days || Math.abs(a.value - mAvg) - Math.abs(b.value - mAvg) || a.value - b.value)[0].value : undefined;
 
   const feelings = FEELINGS.map((f) => {
     const hits = inP.flatMap((l) => (l.feelings || []).filter((x) => x.id === f.id));
@@ -305,7 +346,7 @@ export function analyze(
       count: ratedItems.length,
       avg: avg1(ratedItems.map((r) => r.rating)),
       top: [...ratedItems].sort((a, b) => b.rating - a.rating || b.date.localeCompare(a.date)).slice(0, 5),
-      byTracker: [...rByT.entries()].map(([id, v]) => ({ tracker: byId.get(id)!, avg: avg1(v)!, count: v.length })).sort((a, b) => b.avg - a.avg || b.count - a.count),
+      byTracker: [...rByT.entries()].filter(([, v]) => v.length >= 3).map(([id, v]) => ({ tracker: byId.get(id)!, avg: avg1(v)!, count: v.length })).sort((a, b) => b.avg - a.avg || b.count - a.count),
     },
     sleep: {
       nights: nights.length,
@@ -362,7 +403,7 @@ export function analyze(
 }
 
 /** Série pour les tendances : les N dernières périodes (la plus ancienne d'abord). */
-export function trend(kind: PeriodKind, anchor: ISODate, n: number, fn: (p: Period) => number): { label: string; value: number; period: Period }[] {
+export function trend(kind: PeriodKind, anchor: ISODate, n: number, fn: (p: Period) => number | null): { label: string; value: number | null; period: Period }[] {
   const cur = periodOf(kind, anchor);
   const out = [];
   for (let i = n - 1; i >= 0; i--) {

@@ -39,8 +39,12 @@ export function parseQuick(input: string, today: ISODate = todayISO()): { title:
     if (h < 24 && mi < 60) time = `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
   }
   if (take(/\s(!+|urgent)\s/i)) priority = 'must';
+  else if (take(/\s(~|sans urgence)\s/i)) priority = 'could';
+  else if (take(/\s(vite|rapidement|asap)\s/i)) priority = 'should';
   const title = s.replace(/\s+/g, ' ').trim();
   // Un rendez-vous reconnu (« entretien », « dentiste », « rdv »…) avec une heure devient un rendez-vous fixe
-  const kind = time && EVENT_WORDS.test(input) ? 'event' : undefined;
+  // … sauf s'il s'agit d'une démarche à faire (« prendre rdv chez le dentiste », « appeler le médecin »).
+  const chore = /(?:^|[^\p{L}])(prendre|appeler|rappeler|réserver|reserver|annuler|décaler|decaler|booker)(?=$|[^\p{L}])/iu.test(input);
+  const kind = time && !chore && EVENT_WORDS.test(input) ? 'event' : undefined;
   return { title: title ? title.charAt(0).toUpperCase() + title.slice(1) : input.trim(), date, time, priority, kind };
 }

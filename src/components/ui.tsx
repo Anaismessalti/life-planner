@@ -312,7 +312,7 @@ export function Toasts() {
     };
   }, []);
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[60] flex flex-col items-center gap-2 px-4 md:bottom-6">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-[60] flex flex-col items-center gap-2 px-4 md:bottom-6">
       {toasts.map((t) => (
         <div key={t.id} className="anim-rise pointer-events-auto flex items-center gap-3 rounded-full bg-ink px-4 py-2.5 text-sm text-cream shadow-lift">
           {t.text}

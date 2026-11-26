@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import type { Category, Priority, Project, Task } from '../db/types';
 import { timeToMin } from '../lib/dates';
 import { eur, parseAmount, setPaymentAmount, type Occurrence } from '../lib/finance';
-import { PRIORITY_LABEL, materialize, moveTask, type TaskView } from '../lib/tasks';
+import { PRIORITY_LABEL, isClosed, materialize, moveTask, type TaskView } from '../lib/tasks';
 import { update } from '../db/db';
 import { openEditor } from '../lib/ui-store';
 import { TaskItem } from './TaskItem';
@@ -16,7 +16,7 @@ export interface DayCtx {
 }
 
 export function TaskList({ tasks, ctx, showDate, empty }: { tasks: TaskView[]; ctx: DayCtx; showDate?: boolean; empty?: string }) {
-  if (!tasks.length) return <Empty icon={<Inbox size={20} />}>{empty || 'Rien de prévu ici'}</Empty>;
+  if (!tasks.length) return empty ? <Empty icon={<Inbox size={20} />}>{empty}</Empty> : null;
   return (
     <div className="space-y-2">
       {tasks.map((t) => (
@@ -37,8 +37,9 @@ const HOUR = 56;
 
 /** Planning vertical heure par heure. */
 export function Planning({ tasks, ctx, date }: { tasks: TaskView[]; ctx: DayCtx; date: string }) {
-  const timed = tasks.filter((t) => t.time);
-  const untimed = tasks.filter((t) => !t.time);
+  const timed = tasks.filter((t) => t.time && !(t.outcome && t.outcome !== 'happened'));
+  const allDay = tasks.filter((t) => !t.time && t.kind === 'event');
+  const untimed = tasks.filter((t) => !t.time && t.kind === 'task');
   const startH = Math.min(7, ...timed.map((t) => Math.floor(timeToMin(t.time!) / 60)));
   const endH = Math.max(22, ...timed.map((t) => Math.ceil((timeToMin(t.time!) + (t.duration || 30)) / 60)));
   const hours = Array.from({ length: endH - startH + 1 }, (_, i) => startH + i);
@@ -66,9 +67,15 @@ export function Planning({ tasks, ctx, date }: { tasks: TaskView[]; ctx: DayCtx;
 
   return (
     <div className="space-y-3">
+      {allDay.length > 0 && (
+        <div className="space-y-2">
+          <div className="label">Toute la journée</div>
+          <TaskList tasks={allDay} ctx={ctx} />
+        </div>
+      )}
       {untimed.length > 0 && (
         <div className="space-y-2">
-          <div className="label">Sans horaire</div>
+          <div className="label">À caser dans la journée</div>
           <TaskList tasks={untimed} ctx={ctx} />
         </div>
       )}
@@ -127,6 +134,60 @@ export function Planning({ tasks, ctx, date }: { tasks: TaskView[]; ctx: DayCtx;
   );
 }
 
+/**
+ * La journée en un coup d'œil : les rendez-vous et ce qui a une heure, dans l'ordre ;
+ * puis les tâches sans horaire, rangées par priorité. Les éléments faits ou clos se replient en bas.
+ */
+export function DayAgenda({ tasks, ctx, empty, hideEvents }: { tasks: TaskView[]; ctx: DayCtx; empty?: string; hideEvents?: boolean }) {
+  const [showDone, setShowDone] = useState(false);
+  const closed = tasks.filter((t) => (t.kind === 'task' && isClosed(t)) || (t.kind === 'event' && t.outcome && t.outcome !== 'happened'));
+  const open = tasks.filter((t) => !closed.includes(t));
+  const allDay = open.filter((t) => t.kind === 'event' && !t.time);
+  const timed = open.filter((t) => t.time && (!hideEvents || t.kind === 'task')).sort((a, b) => a.time!.localeCompare(b.time!));
+  const todo = open.filter((t) => t.kind === 'task' && !t.time);
+  const levels: Priority[] = ['must', 'should', 'could'];
+  if (!tasks.length) return <Empty icon={<Inbox size={20} />}>{empty || 'Rien de prévu.'}</Empty>;
+  return (
+    <div className="space-y-4" data-testid="day-agenda">
+      {!hideEvents && allDay.length > 0 && (
+        <div className="space-y-2">
+          <div className="label">Toute la journée</div>
+          <TaskList tasks={allDay} ctx={ctx} />
+        </div>
+      )}
+      {timed.length > 0 && (
+        <div className="space-y-2" data-testid="agenda-timed">
+          <div className="label">{hideEvents ? 'Avec une heure' : 'Rendez-vous et horaires'}</div>
+          <TaskList tasks={timed} ctx={ctx} />
+        </div>
+      )}
+      {todo.length > 0 && (
+        <div className="space-y-3" data-testid="agenda-todo">
+          {levels.map((p) => {
+            const list = todo.filter((t) => t.priority === p);
+            if (!list.length) return null;
+            return (
+              <div key={p} className="space-y-2">
+                <div className={`label ${p === 'must' ? 'text-rasp' : ''}`}>{PRIORITY_LABEL[p]}</div>
+                <TaskList tasks={list} ctx={ctx} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {!open.length && <p className="text-sm text-soft">Tout est fait pour aujourd'hui.</p>}
+      {closed.length > 0 && (
+        <div className="space-y-2">
+          <button className="text-xs text-soft underline-offset-2 hover:underline" onClick={() => setShowDone(!showDone)} data-testid="show-done">
+            {showDone ? 'Masquer' : 'Voir'} ce qui est fait ou annulé ({closed.length})
+          </button>
+          {showDone && <TaskList tasks={closed} ctx={ctx} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PriorityBoard({ tasks, ctx }: { tasks: TaskView[]; ctx: DayCtx }) {
   const list = tasks.filter((t) => t.kind === 'task');
   const levels: Priority[] = ['must', 'should', 'could'];
@@ -138,7 +199,8 @@ export function PriorityBoard({ tasks, ctx }: { tasks: TaskView[]; ctx: DayCtx }
   return (
     <div className="grid gap-3 lg:grid-cols-3">
       {levels.map((p) => {
-        const items = list.filter((t) => t.priority === p);
+        const items = list.filter((t) => t.priority === p && !t.outcome);
+        if (!items.length) return null;
         return (
           <div
             key={p}
@@ -158,7 +220,7 @@ export function PriorityBoard({ tasks, ctx }: { tasks: TaskView[]; ctx: DayCtx }
                 {items.filter((t) => t.status === 'done').length}/{items.length}
               </span>
             </div>
-            <TaskList tasks={items} ctx={ctx} empty="Aucune tâche" />
+            <TaskList tasks={items} ctx={ctx} />
           </div>
         );
       })}
@@ -185,7 +247,7 @@ function PaymentRow({ o, onToggle }: { o: Occurrence; onToggle: (o: Occurrence) 
   const diff = o.confirmed !== undefined && o.confirmed !== o.planned;
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-line/70 bg-card px-3.5 py-2.5 shadow-soft" data-testid="payment-row">
-      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${income ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-blush text-plum'}`}>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${income ? 'bg-[#EFE8F8] text-[#6B4FA0] dark:bg-[#2E2240] dark:text-[#C9B3F0]' : 'bg-blush text-plum'}`}>
         <Receipt size={15} />
       </span>
       <div className="min-w-0 flex-1">
@@ -212,7 +274,7 @@ function PaymentRow({ o, onToggle }: { o: Occurrence; onToggle: (o: Occurrence) 
         </form>
       ) : (
         <button
-          className={`text-sm font-semibold underline decoration-dotted underline-offset-4 ${income ? 'text-emerald-700 dark:text-emerald-300' : 'text-plum'}`}
+          className={`text-sm font-semibold underline decoration-dotted underline-offset-4 ${income ? 'text-[#6B4FA0] dark:text-[#C9B3F0]' : 'text-plum'}`}
           onClick={() => {
             if (o.orphan) return;
             setTxt(String(o.confirmed ?? o.planned).replace('.', ','));

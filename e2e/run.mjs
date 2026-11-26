@@ -15,7 +15,8 @@ page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text
 await page.clock.install({ time: new Date('2026-11-25T09:00:00+01:00') });
 await page.goto(BASE);
 await page.waitForSelector('text=Ma journée');
-ok('Accueil chargé avec salutation', await page.locator('h1').first().textContent().then((t) => /Bonjour/.test(t)));
+ok('Accueil : la date, sans salutation', await page.getByTestId('today-title').textContent().then((t) => /^Mercredi 25 novembre$/.test(t.trim())));
+ok('Accueil : résumé de la journée', await page.getByTestId('today-summary').count());
 ok("Date du jour affichée", await page.locator('text=Mercredi 25 novembre').count());
 
 // Ajout rapide en langage naturel
@@ -29,7 +30,7 @@ await page.getByTestId('quick-input').fill('Appeler la banque !');
 await page.keyboard.press('Enter');
 await page.waitForTimeout(300);
 ok('Tâche du jour visible', await page.locator('[data-testid=task-item]:has-text("Appeler la banque")').count());
-ok('Priorité « ! » comprise', await page.locator('[data-testid=task-item]:has-text("Appeler la banque") >> text=Essentiel').count());
+ok('Priorité « ! » comprise', await page.locator('[data-testid=task-item]:has-text("Appeler la banque") >> text=Absolument').count());
 await page.locator('[data-testid=task-item]:has-text("Appeler la banque") button[aria-label="Marquer comme faite"]').click();
 await page.waitForTimeout(300);
 ok('Progression 100 % après cochage', await page.locator('text=Tout est fait').count());
@@ -71,10 +72,10 @@ await page.waitForTimeout(300);
 await page.clock.setFixedTime(new Date('2026-11-27T08:00:00+01:00'));
 await page.reload();
 await page.waitForSelector('text=Ma journée');
-ok('Report automatique après 2 jours sans ouvrir', await page.locator('section:has-text("Reportées") >> text=Envoyer le dossier').count());
+ok('Report automatique après 2 jours sans ouvrir', await page.locator('[data-testid=task-item]:has-text("Envoyer le dossier") >> text=/prévue/i').count());
 ok('Tâche terminée non reportée', !(await page.locator('[data-testid=task-item]:has-text("Appeler la banque")').count()));
 await page.locator('[data-testid=task-item]:has-text("Envoyer le dossier")').click();
-ok('Date initiale conservée', await page.locator('text=Prévue initialement le 25 novembre').count());
+ok('Date initiale conservée', await page.locator('text=Prévue au départ le 25 novembre').count());
 await page.keyboard.press('Escape');
 
 // Budget

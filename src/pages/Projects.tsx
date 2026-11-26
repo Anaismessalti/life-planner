@@ -29,7 +29,8 @@ export const STATUS_LABEL: Record<ProjectStatus, string> = {
  */
 export function progressOf(p: Project, tasks: Task[], savings: SavingsGoal[] = []) {
   const pt = tasks.filter((t) => !t.deleted && t.projectId === p.id && !t.recurrence);
-  const counted = pt.filter((t) => !t.seriesId && t.kind !== 'event');
+  // Une tâche « plus nécessaire » ne compte ni comme faite ni comme restante.
+  const counted = pt.filter((t) => !t.seriesId && t.kind !== 'event' && !t.outcome);
   if (p.measure && p.measure.target > 0) {
     const g = p.measure.savingsId ? savings.find((x) => x.id === p.measure!.savingsId && !x.deleted) : undefined;
     const current = g ? g.contributions.reduce((a, c) => a + c.amount, 0) : p.measure.current || 0;
@@ -42,8 +43,11 @@ export function progressOf(p: Project, tasks: Task[], savings: SavingsGoal[] = [
     const linked = counted.filter((t) => t.milestoneId === m.id);
     return linked.length > 0 && linked.every((t) => t.status === 'done');
   };
-  const total = p.milestones.length + counted.length;
-  const done = p.milestones.filter(msDone).length + counted.filter((t) => t.status === 'done').length;
+  // Les tâches rattachées à une étape comptent à travers l'étape (sinon une étape de 3 tâches pèserait 4).
+  const ms = new Set(p.milestones.map((m) => m.id));
+  const loose = counted.filter((t) => !t.milestoneId || !ms.has(t.milestoneId));
+  const total = p.milestones.length + loose.length;
+  const done = p.milestones.filter(msDone).length + loose.filter((t) => t.status === 'done').length;
   const pct = p.status === 'done' ? 100 : total ? Math.round((done / total) * 100) : 0;
   return { pct, done, total, tasks: pt, unit: undefined as string | undefined };
 }

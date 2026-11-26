@@ -58,26 +58,42 @@ describe('Five Minute Journal', () => {
 });
 
 describe('agenda dans les stats du journal', () => {
-  it('compte rendez-vous passés et à venir, tâches faites, occurrences récurrentes et humeur', () => {
+  it('ne compte que les rendez-vous qui ont eu lieu, et chaque tâche au jour prévu au départ', () => {
     const cats: Category[] = [{ id: 'c1', name: 'Pro', color: '#111', icon: 'x', order: 0, createdAt: 1, updatedAt: 1 }];
     const tasks = [
-      K('e1', { kind: 'event', date: '2026-11-03', categoryId: 'c1' }),
+      K('e1', { kind: 'event', date: '2026-11-03', categoryId: 'c1', outcome: 'happened' }),
       K('e2', { kind: 'event', date: '2026-11-28' }), // à venir
+      K('e3', { kind: 'event', date: '2026-11-07', outcome: 'cancelled' }),
+      K('e4', { kind: 'event', date: '2026-11-08', outcome: 'noshow' }),
+      K('e5', { kind: 'event', date: '2026-11-09' }), // pas encore confirmé : listé, pas compté
       K('t1', { date: '2026-11-04', status: 'done' }),
-      K('t2', { date: '2026-11-05', postponeHistory: [{ from: '2026-11-04', to: '2026-11-05', at: 1 }] }),
+      // reportée d'octobre à novembre : elle compte pour octobre, pas pour novembre
+      K('t2', { date: '2026-11-05', originalDate: '2026-10-30', postponeCount: 2, status: 'done' }),
+      K('t3', { date: '2026-11-06', originalDate: '2026-11-05', postponeCount: 1, status: 'done' }),
+      K('t4', { date: '2026-11-06', outcome: 'dropped' }),
       K('s1', { date: '2026-11-02', recurrence: { freq: 'weekly', interval: 1 } }), // lundis : 2, 9, 16, 23
       K('x', { kind: 'event', date: '2026-11-06', deleted: true }),
     ];
     const logs = [L('2026-11-03', { mood: 5 }), L('2026-11-04', { mood: 2 })];
     const a = analyze(periodOf('month', '2026-11-10'), logs, [], [], [], '2026-11-26', null, { tasks, categories: cats });
-    expect(a.agenda!.events).toBe(1);
-    expect(a.agenda!.upcoming).toBe(1);
-    expect(a.agenda!.tasks).toBe(2 + 4);
-    expect(a.agenda!.done).toBe(1);
-    expect(a.agenda!.postponed).toBe(1);
-    expect(a.agenda!.moodWithEvents).toBe(5);
-    expect(a.agenda!.moodWithout).toBe(2);
-    expect(a.agenda!.byCategory.find((c) => c.id === 'c1')!.events).toBe(1);
+    const g = a.agenda!;
+    expect(g.events).toBe(1);
+    expect(g.planned).toBe(4);
+    expect(g.cancelled).toBe(1);
+    expect(g.noshow).toBe(1);
+    expect(g.unconfirmed).toBe(1);
+    expect(g.upcoming).toBe(1);
+    expect(g.tasks).toBe(2 + 4); // t1, t3 + 4 lundis ; t2 compte en octobre, t4 n'est plus nécessaire
+    expect(g.done).toBe(2);
+    expect(g.doneLate).toBe(1);
+    expect(g.dropped).toBe(1);
+    expect(g.postponed).toBe(1);
+    // trop peu de jours pour comparer des humeurs : on n'affiche rien
+    expect(g.moodWithEvents).toBeUndefined();
+    expect(g.byCategory.find((c) => c.id === 'c1')!.events).toBe(1);
+    const oct = analyze(periodOf('month', '2026-10-10'), logs, [], [], [], '2026-11-26', null, { tasks, categories: cats });
+    expect(oct.agenda!.tasks).toBe(1 + 0);
+    expect(oct.agenda!.done).toBe(1);
   });
 });
 
@@ -118,7 +134,8 @@ describe('notes sur 10', () => {
     expect(a.rated.avg).toBe(7.3);
     expect(a.rated.top[0].rating).toBe(9);
     expect(a.rated.top[0].with).toEqual(['Léa']);
-    expect(a.rated.byTracker[0]).toMatchObject({ avg: 8, count: 2 });
+    // moins de 3 sorties notées pour une activité : pas de moyenne par activité
+    expect(a.rated.byTracker).toEqual([]);
     expect(isLogged(L('2026-10-05', { score: 7 }))).toBe(true);
   });
 });

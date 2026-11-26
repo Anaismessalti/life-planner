@@ -50,7 +50,8 @@ describe('projets : progression réelle', () => {
     const done = [t({ milestoneId: 'm1', status: 'done' }), t({ milestoneId: 'm1', status: 'done' })];
     expect(progressOf(proj({ milestones: ms }), done).pct).toBe(100);
     const reopened = [done[0], { ...done[1], status: 'todo' as const }];
-    expect(progressOf(proj({ milestones: ms }), reopened).pct).toBe(33);
+    // l'étape compte une fois (ses tâches passent par elle) : une tâche rouverte la rouvre
+    expect(progressOf(proj({ milestones: ms }), reopened).pct).toBe(0);
   });
   it('objectif chiffré, objectif d’épargne, projet terminé', () => {
     expect(progressOf(proj({ measure: { target: 12, current: 3, unit: 'livres' } }), []).pct).toBe(25);

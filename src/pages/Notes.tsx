@@ -39,7 +39,7 @@ export function NotesPage() {
       const url = normalizeUrl(txt);
       if (!url) return toast('Aucun lien dans le presse-papiers');
       await create<Note>('notes', { title: guessTitle(url), url, tags: [], favorite: false, collectionId: col.startsWith('col-') || colMap.has(col) ? col : undefined } as any);
-      toast('Lien enregistré ✨');
+      toast('Lien enregistré');
     } catch {
       openEditor({ type: 'note', link: true });
     }
@@ -172,7 +172,7 @@ export function NoteEditor({ id, link }: { id?: string; link?: boolean }) {
     if (existing) await update<Note>('notes', existing.id, rec);
     else await create<Note>('notes', rec as any);
     closeEditor();
-    toast('Enregistré ✨');
+    toast('Enregistré');
   };
 
   const paste = async () => {
