@@ -176,6 +176,26 @@ export interface Note extends BaseRecord {
   favorite: boolean;
 }
 
+/** Une activité ou un état à suivre au quotidien (sortie, verre, bureau, congé…). */
+export interface Tracker extends BaseRecord {
+  name: string;
+  icon: string;
+  color: string;
+  order: number;
+  /** Famille de statistiques : sorties, moi, travail, autres. */
+  group: 'sorties' | 'moi' | 'travail' | 'autres';
+}
+
+/** Journal d'une journée. id = date (YYYY-MM-DD) : jamais de doublon, même entre appareils. */
+export interface DayLog extends BaseRecord {
+  date: ISODate;
+  /** Note de la journée, de 1 à 5. */
+  mood?: number;
+  /** Activités cochées, avec un détail facultatif (« avec Léa », « chez Sarah »). */
+  items: { trackerId: string; detail?: string }[];
+  text?: string;
+}
+
 export interface SettingRecord extends BaseRecord {
   value: unknown;
 }
@@ -192,7 +212,9 @@ export type TableName =
   | 'savings'
   | 'collections'
   | 'notes'
-  | 'settings';
+  | 'settings'
+  | 'trackers'
+  | 'daylogs';
 
 export const SYNC_TABLES: TableName[] = [
   'tasks',
@@ -207,4 +229,6 @@ export const SYNC_TABLES: TableName[] = [
   'collections',
   'notes',
   'settings',
+  'trackers',
+  'daylogs',
 ];

@@ -4,6 +4,7 @@ import type {
   BudgetCategory,
   Category,
   Collection,
+  DayLog,
   Expense,
   FixedExpense,
   Income,
@@ -14,6 +15,7 @@ import type {
   SettingRecord,
   TableName,
   Task,
+  Tracker,
 } from './types';
 
 export interface OutboxEntry {
@@ -41,6 +43,8 @@ export class PlannerDB extends Dexie {
   collections!: Table<Collection, string>;
   notes!: Table<Note, string>;
   settings!: Table<SettingRecord, string>;
+  trackers!: Table<Tracker, string>;
+  daylogs!: Table<DayLog, string>;
   /** Données propres à l'appareil, jamais synchronisées. */
   meta!: Table<MetaRecord, string>;
   /** File d'attente des enregistrements modifiés localement, à envoyer au serveur. */
@@ -63,6 +67,11 @@ export class PlannerDB extends Dexie {
       settings: 'id, updatedAt',
       meta: 'key',
       outbox: 'key',
+    });
+    // Version 2 : journal des journées (les données existantes sont conservées)
+    this.version(2).stores({
+      trackers: 'id, order, updatedAt',
+      daylogs: 'id, date, updatedAt',
     });
   }
 

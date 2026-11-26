@@ -1,4 +1,6 @@
-import { CalendarClock, Sparkles } from 'lucide-react';
+import { BookHeart, CalendarClock, Settings as Cog, Sparkles } from 'lucide-react';
+import { MoodPicker, useDayLogs } from './Journal';
+import { MOODS } from '../lib/journal';
 import { useMemo, useState } from 'react';
 import { PaymentsList, Planning, PriorityBoard, TaskList, type DayCtx } from '../components/DayViews';
 import { Ring, Section, Segmented } from '../components/ui';
@@ -59,6 +61,8 @@ export function TodayPage() {
   const projectDeadlines = projectsArr.filter((p) => p.dueDate && p.status !== 'done' && p.dueDate >= today && p.dueDate <= in7);
   const payments = financeOccurrencesIn(finance, today, today);
 
+  const logs = useDayLogs();
+  const todayLog = logs.find((l) => l.id === today);
   const dateLabel = capitalize(fmt(today, 'EEEE d MMMM'));
   const quote = QUOTES[Number(today.slice(8)) % QUOTES.length];
 
@@ -70,6 +74,9 @@ export function TodayPage() {
           <h1 className="h-title mt-1 text-4xl md:text-5xl">{greeting(name)}</h1>
           <p className="mt-1.5 font-serif text-lg italic text-soft">{quote}</p>
         </div>
+        <button className="icon-btn md:hidden" onClick={() => navigate('settings')} aria-label="Paramètres">
+          <Cog size={20} />
+        </button>
       </header>
 
       <div className="anim-rise card relative flex items-center gap-4 overflow-hidden p-4">
@@ -151,6 +158,28 @@ export function TodayPage() {
         )}
         {mode === 'planning' && <Planning tasks={day} ctx={ctx} date={today} />}
         {mode === 'priorities' && <PriorityBoard tasks={tasks} ctx={ctx} />}
+      </Section>
+
+      <Section
+        title={
+          <span className="inline-flex items-center gap-2">
+            <BookHeart size={18} className="text-rasp" /> Comment s'est passée ta journée ?
+          </span>
+        }
+        action={
+          <button className="btn-soft py-1.5 text-xs" onClick={() => navigate('journal', today)}>
+            {todayLog?.items.length ? `${todayLog.items.length} activité${todayLog.items.length > 1 ? 's' : ''}` : 'Mon journal'}
+          </button>
+        }
+      >
+        <div className="card p-3">
+          <MoodPicker date={today} value={todayLog?.mood} size="sm" />
+          {todayLog?.mood && (
+            <button className="mt-2 w-full text-center text-xs text-rasp" onClick={() => navigate('journal', today)}>
+              {MOODS[todayLog.mood - 1].label} journée · ajouter mes sorties et activités →
+            </button>
+          )}
+        </div>
       </Section>
     </div>
   );

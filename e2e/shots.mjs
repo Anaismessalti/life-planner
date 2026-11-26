@@ -43,6 +43,13 @@ const backup = {
       r('e4', { amount: 24, date: '2026-11-22', budgetCategoryId: 'bc-sorties', note: 'Cinéma' }),
     ],
     savings: [r('s1', { name: 'Voyage au Japon', target: 3000, contributions: [{ id: 'c1', date: '2026-11-02', amount: 150 }, { id: 'c2', date: '2026-10-02', amount: 900 }] })],
+    daylogs: [
+      ['2026-11-01', 5, ['tr-apero:chez Sarah', 'tr-alcool']], ['2026-11-02', 3, ['tr-bureau']], ['2026-11-03', 4, ['tr-bureau', 'tr-sport']],
+      ['2026-11-05', 2, ['tr-teletravail']], ['2026-11-07', 5, ['tr-diner:avec Léa', 'tr-verre:avec Léa', 'tr-alcool', 'tr-derive']],
+      ['2026-11-08', 4, ['tr-cinema:avec Léa']], ['2026-11-12', 3, ['tr-bureau']], ['2026-11-14', 5, ['tr-soiree:chez Inès', 'tr-alcool']],
+      ['2026-11-15', 4, ['tr-cafe:avec Maman']], ['2026-11-20', 1, ['tr-bureau']], ['2026-11-21', 4, ['tr-apero:chez Sarah', 'tr-alcool']],
+      ['2026-11-22', 5, ['tr-voyage', 'tr-conge']], ['2026-11-23', 5, ['tr-voyage', 'tr-conge']], ['2026-11-24', 3, ['tr-bureau', 'tr-sport']],
+    ].map(([date, mood, items]) => r(date, { date, mood, items: items.map((x) => { const [trackerId, detail] = x.split(':'); return detail ? { trackerId, detail } : { trackerId }; }) })),
     notes: [
       r('n1', { title: 'Tiramisu de Mamie', text: '3 œufs, 250 g de mascarpone, café fort, biscuits à la cuillère.\nRepos 6 h au frais.', collectionId: 'col-recettes', tags: ['dessert'], favorite: true }),
       r('n2', { title: 'TikTok de @parisfood', url: 'https://www.tiktok.com/@parisfood/video/1', collectionId: 'col-restaurants', tags: ['paris'], favorite: false }),
@@ -60,7 +67,7 @@ const targets = [
   ['ipad', { ...devices['iPad (gen 7)'] }],
   ['mac', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 }],
 ];
-const pages = ['today', 'calendar', 'projects', 'budget', 'notes', 'settings'];
+const pages = ['today', 'calendar', 'projects', 'budget', 'notes', 'journal', 'settings'];
 const errors = [];
 for (const [name, dev] of targets) {
   for (const dark of [false, true]) {

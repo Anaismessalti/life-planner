@@ -67,6 +67,7 @@ export function SettingsPage() {
           <ListManager table="categories" title="Catégories de tâches" />
           <ListManager table="collections" title="Collections de notes" />
           <ListManager table="budgetCategories" title="Catégories de dépenses" withKind />
+          <ListManager table="trackers" title="Suivis du journal" withGroup />
         </div>
 
         <div className="min-w-0 space-y-7">
@@ -97,9 +98,9 @@ export function SettingsPage() {
   );
 }
 
-type ListRec = BaseRecord & { name: string; color: string; icon: string; order: number; kind?: 'fixed' | 'variable' };
+type ListRec = BaseRecord & { name: string; color: string; icon: string; order: number; kind?: 'fixed' | 'variable'; group?: string };
 
-function ListManager({ table, title, withKind }: { table: TableName; title: string; withKind?: boolean }) {
+function ListManager({ table, title, withKind, withGroup }: { table: TableName; title: string; withKind?: boolean; withGroup?: boolean }) {
   const items = (useLiveQuery(() => db.table_(table).toArray(), [table], []) as ListRec[]).filter((x) => !x.deleted).sort((a, b) => a.order - b.order);
   const [open, setOpen] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
@@ -145,6 +146,14 @@ function ListManager({ table, title, withKind }: { table: TableName; title: stri
                     </button>
                   ))}
                 </div>
+                {withGroup && (
+                  <select className="input py-2 text-sm" value={c.group || 'autres'} onChange={(e) => update(table, c.id, { group: e.target.value } as any)} aria-label="Famille">
+                    <option value="sorties">Sorties</option>
+                    <option value="moi">Moi</option>
+                    <option value="travail">Travail et voyages</option>
+                    <option value="autres">Autres</option>
+                  </select>
+                )}
                 {withKind && (
                   <Segmented
                     value={c.kind || 'variable'}
@@ -166,7 +175,7 @@ function ListManager({ table, title, withKind }: { table: TableName; title: stri
           e.preventDefault();
           if (!newName.trim()) return;
           const order = Math.max(0, ...items.map((x) => x.order)) + 1;
-          await create(table, { name: newName.trim(), color: COLORS[order % COLORS.length], icon: 'star', order, ...(withKind ? { kind: 'variable' } : {}) } as any);
+          await create(table, { name: newName.trim(), color: COLORS[order % COLORS.length], icon: 'star', order, ...(withKind ? { kind: 'variable' } : {}), ...(withGroup ? { group: 'autres' } : {}) } as any);
           setNewName('');
         }}
       >

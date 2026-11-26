@@ -1,10 +1,10 @@
-import { CalendarClock, CheckSquare, FolderHeart, HandCoins, Link2, Receipt, StickyNote } from 'lucide-react';
+import { BookHeart, CalendarClock, CheckSquare, FolderHeart, HandCoins, Link2, Receipt, StickyNote } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { create } from '../db/db';
 import type { Task } from '../db/types';
 import { relativeDay, todayISO } from '../lib/dates';
 import { parseQuick } from '../lib/parse';
-import { closeEditor, openEditor } from '../lib/ui-store';
+import { closeEditor, navigate, openEditor } from '../lib/ui-store';
 import { Sheet, toast } from './ui';
 
 const ITEMS = [
@@ -15,6 +15,7 @@ const ITEMS = [
   { label: 'Revenu', icon: HandCoins, run: () => openEditor({ type: 'income' }) },
   { label: 'Note', icon: StickyNote, run: () => openEditor({ type: 'note' }) },
   { label: 'Lien', icon: Link2, run: () => openEditor({ type: 'note', link: true }) },
+  { label: 'Ma journée', icon: BookHeart, run: () => (closeEditor(), navigate('journal', todayISO())) },
 ];
 
 export function QuickAdd() {
@@ -65,7 +66,7 @@ export function QuickAdd() {
             : 'Astuce : utilise le micro du clavier pour dicter. « ! » = essentiel.'}
         </p>
       </form>
-      <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-7">
+      <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-8">
         {ITEMS.map(({ label, icon: I, run }) => (
           <button key={label} onClick={run} className="flex flex-col items-center gap-1.5 rounded-2xl bg-card p-3 text-xs font-medium text-plum shadow-soft transition active:scale-95" data-testid={`quick-${label}`}>
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blush to-mauve/40">

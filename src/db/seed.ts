@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { BaseRecord, BudgetCategory, Category, Collection, TableName } from './types';
+import type { BaseRecord, BudgetCategory, Category, Collection, TableName, Tracker } from './types';
 
 // Les données par défaut ont des horodatages à 1 : toute modification réelle (sur n'importe
 // quel appareil) l'emporte toujours sur elles lors de la synchronisation.
@@ -49,6 +49,22 @@ export const DEFAULT_COLLECTIONS: [string, string, string, string][] = [
   ['col-perso', 'Notes personnelles', 'notebook-pen', '#81265D'],
 ];
 
+export const DEFAULT_TRACKERS: [string, string, string, string, Tracker['group']][] = [
+  ['tr-cafe', 'Café avec des amis', 'coffee', '#C98A4B', 'sorties'],
+  ['tr-apero', 'Apéro', 'martini', '#E0789E', 'sorties'],
+  ['tr-verre', 'Verre en ville', 'wine', '#A83278', 'sorties'],
+  ['tr-diner', 'Dîner', 'utensils', '#D46A8C', 'sorties'],
+  ['tr-soiree', 'Soirée', 'party-popper', '#8E6BB0', 'sorties'],
+  ['tr-cinema', 'Cinéma', 'film', '#5B6FB5', 'sorties'],
+  ['tr-alcool', 'Alcool', 'beer', '#C9A13B', 'moi'],
+  ['tr-derive', 'Dérive', 'flame', '#E0457B', 'moi'],
+  ['tr-sport', 'Sport', 'dumbbell', '#4E9A6A', 'moi'],
+  ['tr-bureau', 'Bureau', 'briefcase', '#81265D', 'travail'],
+  ['tr-teletravail', 'Télétravail', 'laptop', '#3E9C9B', 'travail'],
+  ['tr-conge', 'Congé', 'palm', '#C98A4B', 'travail'],
+  ['tr-voyage', 'Voyage', 'plane', '#3E9C9B', 'travail'],
+];
+
 async function putSeed(table: TableName, recs: BaseRecord[]) {
   const t = db.table_(table);
   for (const r of recs) {
@@ -59,6 +75,14 @@ async function putSeed(table: TableName, recs: BaseRecord[]) {
 }
 
 export async function seedDefaults() {
+  // Le journal est arrivé dans une mise à jour : ses suivis par défaut sont ajoutés une seule fois.
+  if (!(await db.meta.get('seededTrackers'))) {
+    await putSeed(
+      'trackers',
+      DEFAULT_TRACKERS.map(([id, name, icon, color, group], i) => seedRec<Tracker>({ id, name, icon, color, group, order: i })),
+    );
+    await db.meta.put({ key: 'seededTrackers', value: true });
+  }
   const done = await db.meta.get('seeded');
   if (done) return;
   await putSeed(

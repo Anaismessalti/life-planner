@@ -1,4 +1,4 @@
-import { CalendarDays, FolderHeart, Plus, Settings as Cog, StickyNote, Sun, Wallet, type LucideIcon } from 'lucide-react';
+import { BookHeart, CalendarDays, FolderHeart, Plus, Settings as Cog, StickyNote, Sun, Wallet, type LucideIcon } from 'lucide-react';
 import { useEffect, useSyncExternalStore } from 'react';
 import { QuickAdd } from './components/QuickAdd';
 import { TaskEditor } from './components/TaskEditor';
@@ -11,6 +11,7 @@ import { NotesPage, NoteEditor } from './pages/Notes';
 import { ProjectEditor, ProjectsPage } from './pages/Projects';
 import { SettingsPage } from './pages/Settings';
 import { TodayPage } from './pages/Today';
+import { JournalPage } from './pages/Journal';
 
 const NAV: { route: Route; label: string; icon: LucideIcon }[] = [
   { route: 'today', label: "Aujourd'hui", icon: Sun },
@@ -18,6 +19,7 @@ const NAV: { route: Route; label: string; icon: LucideIcon }[] = [
   { route: 'projects', label: 'Projets', icon: FolderHeart },
   { route: 'budget', label: 'Budget', icon: Wallet },
   { route: 'notes', label: 'Notes', icon: StickyNote },
+  { route: 'journal', label: 'Journal', icon: BookHeart },
   { route: 'settings', label: 'Paramètres', icon: Cog },
 ];
 
@@ -68,7 +70,7 @@ export function App() {
     return () => window.removeEventListener('keydown', k);
   }, []);
 
-  const Page = { today: TodayPage, calendar: CalendarPage, projects: ProjectsPage, budget: BudgetPage, notes: NotesPage, settings: SettingsPage }[route];
+  const Page = { today: TodayPage, calendar: CalendarPage, projects: ProjectsPage, budget: BudgetPage, notes: NotesPage, journal: JournalPage, settings: SettingsPage }[route];
 
   return (
     <div className="bg-app min-h-full">
@@ -122,7 +124,7 @@ export function App() {
               <Plus size={28} />
             </button>
           </div>
-          {NAV.slice(3).map((n) => (
+          {NAV.slice(3, 6).map((n) => (
             <TabButton key={n.route} {...n} active={route === n.route} />
           ))}
         </div>

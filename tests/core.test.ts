@@ -174,3 +174,24 @@ describe('synchronisation', () => {
     expect((await db.notes.toArray())[0].title).toBe('Recette');
   });
 });
+
+import { monthJournal } from '../src/lib/journal';
+describe('journal', () => {
+  it('compte les jours par activité et par famille, et la note moyenne', () => {
+    const tr = (id: string, group: any) => ({ id, name: id, icon: 'star', color: '#000', order: 0, group, createdAt: 1, updatedAt: 1 });
+    const trackers = [tr('apero', 'sorties'), tr('verre', 'sorties'), tr('alcool', 'moi'), tr('bureau', 'travail')];
+    const log = (date: string, items: string[], mood?: number) => ({ id: date, date, mood, items: items.map((trackerId) => ({ trackerId, detail: trackerId === 'apero' ? 'chez Sarah' : undefined })), createdAt: 1, updatedAt: 1 });
+    const logs = [
+      log('2026-11-02', ['apero', 'verre', 'alcool'], 5),
+      log('2026-11-03', ['bureau'], 3),
+      log('2026-11-07', ['apero'], 4),
+      log('2026-12-01', ['apero'], 1),
+    ];
+    const s = monthJournal(logs as any, trackers as any, '2026-11');
+    expect(s.perGroup.sorties).toBe(2); // 2 jours de sortie, même avec 2 sorties le 2
+    expect(s.perTracker.find((p) => p.tracker.id === 'apero')!.days).toBe(2);
+    expect(s.perTracker.find((p) => p.tracker.id === 'alcool')!.days).toBe(1);
+    expect(s.moodAvg).toBe(4);
+    expect(s.daysLogged).toBe(3);
+  });
+});

@@ -32,8 +32,8 @@ export function useEditor() {
 }
 
 // ---- Navigation par ancre (#/today) : fonctionne sur GitHub Pages sans configuration ----
-export type Route = 'today' | 'calendar' | 'projects' | 'budget' | 'notes' | 'settings';
-export const ROUTES: Route[] = ['today', 'calendar', 'projects', 'budget', 'notes', 'settings'];
+export type Route = 'today' | 'calendar' | 'projects' | 'budget' | 'notes' | 'journal' | 'settings';
+export const ROUTES: Route[] = ['today', 'calendar', 'projects', 'budget', 'notes', 'journal', 'settings'];
 function readRoute(): { route: Route; param?: string } {
   const [r, p] = location.hash.replace(/^#\/?/, '').split('/');
   return { route: (ROUTES.includes(r as Route) ? r : 'today') as Route, param: p };

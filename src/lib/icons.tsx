@@ -2,7 +2,8 @@ import {
   Heart, FileText, Stethoscope, ShoppingBasket, House, Briefcase, Plane, Wallet, Sparkles, Zap, Smartphone, Shield,
   Repeat, Dumbbell, Utensils, ShoppingBag, Car, PartyPopper, ChefHat, Sofa, Gift, Lightbulb, NotebookPen, Coffee,
   BookOpen, Baby, PawPrint, GraduationCap, Palette, Camera, Flower2, Leaf, Music2, Film, Wine, Pill, Shirt, Train,
-  Star, Target, PiggyBank, Receipt, Tag, type LucideIcon,
+  Star, Target, PiggyBank, Receipt, Tag, Beer, Martini, TreePalm, Laptop, Moon, Flame, Users, Bed, Ticket, Cigarette,
+  type LucideIcon,
 } from 'lucide-react';
 
 export const ICONS: Record<string, LucideIcon> = {
@@ -13,6 +14,8 @@ export const ICONS: Record<string, LucideIcon> = {
   'notebook-pen': NotebookPen, coffee: Coffee, book: BookOpen, baby: Baby, paw: PawPrint, graduation: GraduationCap,
   palette: Palette, camera: Camera, flower: Flower2, leaf: Leaf, music: Music2, film: Film, wine: Wine, pill: Pill,
   shirt: Shirt, train: Train, star: Star, target: Target, piggy: PiggyBank, receipt: Receipt, tag: Tag,
+  beer: Beer, martini: Martini, palm: TreePalm, laptop: Laptop, moon: Moon, flame: Flame, users: Users, bed: Bed,
+  ticket: Ticket, cigarette: Cigarette,
 };
 export const ICON_NAMES = Object.keys(ICONS);
 
