@@ -611,9 +611,10 @@ export function ExpenseEditor({ id, defaults }: { id?: string; defaults?: { date
               onConfirm={async () => {
                 await update('expenses', id, { deleted: true });
                 closeEditor();
+                toast('Dépense supprimée', { label: 'Annuler', run: () => update('expenses', id, { deleted: false }) });
               }}
             >
-              <Trash2 size={16} />
+              <Trash2 size={16} /> Supprimer
             </ConfirmButton>
           )}
           <button className="btn-primary ml-auto px-6" onClick={save}>
@@ -734,9 +735,10 @@ export function IncomeEditor({ id }: { id?: string }) {
               onConfirm={async () => {
                 await update('incomes', existing.id, { deleted: true });
                 closeEditor();
+                toast('Revenu supprimé', { label: 'Annuler', run: () => update('incomes', existing.id, { deleted: false }) });
               }}
             >
-              <Trash2 size={16} />
+              <Trash2 size={16} /> Supprimer
             </ConfirmButton>
           )}
           <button className="btn-primary ml-auto px-6" onClick={save}>
@@ -831,9 +833,10 @@ export function FixedEditor({ id }: { id?: string }) {
               onConfirm={async () => {
                 await update('fixedExpenses', existing.id, { deleted: true });
                 closeEditor();
+                toast('Dépense fixe supprimée', { label: 'Annuler', run: () => update('fixedExpenses', existing.id, { deleted: false }) });
               }}
             >
-              <Trash2 size={16} />
+              <Trash2 size={16} /> Supprimer
             </ConfirmButton>
           )}
           {existing && (
