@@ -107,6 +107,7 @@ const tasks = [
   rec('tk-certif', { kind: 'task', title: 'Réserver la date d’examen', priority: 'should', subtasks: [], status: 'done', projectId: 'pj-certif', milestoneId: 'm2', date: '2026-11-04' }),
   rec('tk-certif2', { kind: 'task', title: 'Chapitre 1', priority: 'should', subtasks: [], status: 'todo', projectId: 'pj-certif', milestoneId: 'm2' }),
   rec('tk-goal', { kind: 'task', title: 'Ranger le dressing', priority: 'could', subtasks: [], status: 'todo', targetMonth: '2026-10' }),
+  rec('tk-vinted', { kind: 'task', title: 'Livrer colis vinted', priority: 'should', subtasks: [{ id: 's1', title: 'Emballer', done: false }, { id: 's2', title: 'Imprimer l’étiquette', done: false }], status: 'todo', date: '2026-11-27', dueDate: '2026-11-30' }),
   rec('tk-kine', { kind: 'event', title: 'Kiné', priority: 'should', subtasks: [], status: 'todo', date: '2026-11-19', time: '14:00' }),
 ];
 const backup = { app: 'life-planner', version: 1, exportedAt: new Date().toISOString(), tables: { daylogs, expenses, incomes, fixedExpenses, payments, savings, projects, tasks, contacts: undefined } };
@@ -193,6 +194,15 @@ ok('Déplacer : la tâche quitte ma journée pour le lundi 30 novembre', !(await
 await page.getByRole('button', { name: 'Annuler' }).click();
 await page.waitForTimeout(500);
 ok('Déplacer : « Annuler » la remet aujourd’hui', (await page.locator('[data-testid=day-agenda] [data-testid=task-item]:has-text("Déclarer les impôts")').count()) === 1);
+const vinted = page.locator('[data-testid=task-item]:has-text("Livrer colis vinted")').first();
+await vinted.getByTestId('subtasks-toggle').click();
+ok('Sous-tâches visibles depuis la liste', (await vinted.getByTestId('subtask-item').count()) === 2 && (await vinted.getByTestId('subtasks-list').textContent()).includes('Emballer'));
+await vinted.getByTestId('subtask-item').first().click();
+await page.waitForTimeout(400);
+ok('Sous-tâche cochée sans ouvrir la tâche (1/2)', (await vinted.getByTestId('subtasks-toggle').textContent()).includes('1/2') && !(await page.locator('[role=dialog]').count()));
+await vinted.getByTestId('subtask-item').nth(1).click();
+await page.waitForTimeout(400);
+ok('Toutes faites : on propose de cocher la tâche', await page.getByRole('button', { name: 'Cocher la tâche' }).count());
 
 // Calendrier : objectif d'octobre non fait remonté en novembre ; projet multi-années
 await page.goto(BASE + '#/calendar');

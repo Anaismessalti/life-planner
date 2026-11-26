@@ -1,9 +1,9 @@
-import { CalendarClock, CalendarPlus, Check, Clock, FolderHeart, History, MapPin, Repeat, X } from 'lucide-react';
+import { CalendarClock, CalendarPlus, Check, ChevronDown, Clock, FolderHeart, History, ListChecks, MapPin, Repeat, X } from 'lucide-react';
 import { useState } from 'react';
 import type { Category } from '../db/types';
 import { diffDays, relativeDay } from '../lib/dates';
 import { OUTCOME_LABEL, setOutcome } from '../lib/agenda';
-import { PRIORITY_SHORT, STUCK_AFTER, isPostponed, moveTask, needsOutcome, postponeCount, setDone, type TaskView } from '../lib/tasks';
+import { PRIORITY_SHORT, STUCK_AFTER, isPostponed, moveTask, needsOutcome, postponeCount, setDone, toggleSubtask, type TaskView } from '../lib/tasks';
 import { MoveSheet } from './MoveSheet';
 import { openEditor } from '../lib/ui-store';
 import { toast } from './ui';
@@ -25,6 +25,7 @@ export function TaskItem({
 }) {
   const isEvent = t.kind === 'event';
   const [moving, setMoving] = useState(false);
+  const [showSub, setShowSub] = useState(false);
   const openMove = (e: React.MouseEvent) => {
     e.stopPropagation();
     setMoving(true);
@@ -125,8 +126,43 @@ export function TaskItem({
                 {projectName}
               </span>
             )}
-            {sub && <span>{sub} sous-tâches</span>}
+            {sub && (
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium transition ${showSub ? 'bg-plum text-white' : 'bg-blush text-plum'}`}
+                onClick={(e) => (e.stopPropagation(), setShowSub((v) => !v))}
+                aria-expanded={showSub}
+                data-testid="subtasks-toggle"
+              >
+                <ListChecks size={12} /> {sub} sous-tâches
+                <ChevronDown size={12} className={`transition ${showSub ? 'rotate-180' : ''}`} />
+              </button>
+            )}
           </div>
+        )}
+        {showSub && sub && (
+          <ul className="mt-2 space-y-1" data-testid="subtasks-list" onClick={(e) => e.stopPropagation()}>
+            {t.subtasks.map((st) => (
+              <li key={st.id}>
+                <button
+                  type="button"
+                  className="flex min-h-[36px] w-full items-center gap-2.5 rounded-xl px-1.5 text-left text-sm hover:bg-blush/50"
+                  onClick={async () => {
+                    const next = await toggleSubtask(t, st.id);
+                    if (!done && next.every((x) => x.done))
+                      toast('Toutes les sous-tâches sont faites', { label: 'Cocher la tâche', run: () => setDone({ ...t, virtual: false, subtasks: next }, true) });
+                  }}
+                  aria-pressed={st.done}
+                  data-testid="subtask-item"
+                >
+                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${st.done ? 'border-plum bg-plum text-white' : 'border-mauve'}`}>
+                    {st.done && <Check size={12} strokeWidth={3} />}
+                  </span>
+                  <span className={st.done ? 'text-soft line-through' : ''}>{st.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
         {ask && (
           <div className="mt-2 flex flex-wrap gap-1.5" data-testid="ask-outcome">

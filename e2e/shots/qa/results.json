@@ -61,6 +61,21 @@
       "extra": ""
     },
     {
+      "name": "Sous-tâches visibles depuis la liste",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Sous-tâche cochée sans ouvrir la tâche (1/2)",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Toutes faites : on propose de cocher la tâche",
+      "pass": true,
+      "extra": ""
+    },
+    {
       "name": "Objectif d’octobre non terminé visible en novembre",
       "pass": true,
       "extra": ""
@@ -266,7 +281,7 @@
       "extra": "+0px"
     },
     {
-      "name": "119 boutons touchés sans erreur",
+      "name": "122 boutons touchés sans erreur",
       "pass": true,
       "extra": ""
     },

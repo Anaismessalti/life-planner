@@ -103,6 +103,14 @@ export async function setDone(t: TaskView, done: boolean) {
   return update<Task>('tasks', t.id, patch);
 }
 
+/** Cocher / décocher une sous-tâche directement depuis la liste. Renvoie les sous-tâches à jour. */
+export async function toggleSubtask(t: TaskView, subId: string) {
+  const subtasks = t.subtasks.map((s) => (s.id === subId ? { ...s, done: !s.done } : s));
+  if (t.virtual) await materialize(t, { subtasks });
+  else await update<Task>('tasks', t.id, { subtasks });
+  return subtasks;
+}
+
 export async function moveTask(t: TaskView, date: ISODate | undefined) {
   if (t.virtual) return materialize(t, { date });
   return update<Task>('tasks', t.id, { date });
