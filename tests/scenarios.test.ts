@@ -282,3 +282,12 @@ describe('configuration Firebase collée', () => {
     expect(parseConfig('const firebaseConfig = { … }')).toBeNull();
   });
 });
+
+describe('configuration Firebase : copier-coller abîmé', () => {
+  it('répare les tirets typographiques et les espaces invisibles, refuse une clé tronquée', async () => {
+    const { parseConfig } = await import('../src/lib/sync/firebase');
+    const c = parseConfig('{ apiKey: "AIzaSyCwBtwUdBlqeLCxd–KnsjugM4aykF1m_XE​", projectId: "p", appId: "1:2:web:3" }');
+    expect(c!.apiKey).toBe('AIzaSyCwBtwUdBlqeLCxd-KnsjugM4aykF1m_XE');
+    expect(parseConfig('{ apiKey: "AIza…", projectId: "p", appId: "1:2:web:3" }')).toBeNull();
+  });
+});

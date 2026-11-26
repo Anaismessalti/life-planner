@@ -42,23 +42,35 @@ let app: FirebaseApp | null = null;
 /** Accepte le bloc copié depuis la console Firebase (`const firebaseConfig = {...}`) ou du JSON. */
 export function parseConfig(text: string): FirebaseConfig | null {
   // Guillemets typographiques (copier-coller depuis Notes, Messages…) ramenés à des guillemets simples.
-  text = text.replace(/[\u201C\u201D\u201E\u00AB\u00BB]/g, '"').replace(/[\u2018\u2019]/g, "'");
+  text = text
+    .replace(/[\u201C\u201D\u201E\u00AB\u00BB]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    // Tirets « typographiques » et caractères invisibles ajoutés par certains copier-coller (une clé faussée d'un seul caractère est refusée).
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ');
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) return null;
   const obj: Record<string, string> = {};
   const re = /["']?(\w+)["']?\s*:\s*["']([^"']+)["']/g;
   let r: RegExpExecArray | null;
   while ((r = re.exec(m[0]))) obj[r[1]] = r[2];
+  for (const k of Object.keys(obj)) obj[k] = obj[k].trim();
   if (!obj.apiKey || !obj.projectId || !obj.appId) return null;
+  if (!/^AIza[\w-]{30,}$/.test(obj.apiKey)) return null;
   if (!obj.authDomain) obj.authDomain = `${obj.projectId}.firebaseapp.com`;
   return obj as FirebaseConfig;
 }
 
+let currentKey = '';
 export const isReady = () => !!app;
+/** Firebase est-il lancé avec CETTE configuration ? (après un changement de configuration, il faut relancer) */
+export const isReadyFor = (cfg?: { apiKey?: string; appId?: string } | null) => !!app && !!cfg && currentKey === `${cfg.apiKey}|${cfg.appId}`;
 
 export async function initFirebase(cfg: FirebaseConfig) {
   for (const a of getApps()) await deleteApp(a);
   app = initializeApp(cfg);
+  currentKey = `${cfg.apiKey}|${cfg.appId}`;
   // Uniquement pour les tests automatiques (émulateurs Firebase locaux)
   if (cfg.emulatorHost) {
     connectAuthEmulator(getAuth(app), `http://${cfg.emulatorHost}:9099`, { disableWarnings: true });

@@ -346,11 +346,11 @@ function SyncCard() {
     if (!cfg) return;
     let off = () => {};
     import('../lib/sync/firebase').then(async (fb) => {
-      if (!fb.isReady()) await initSync();
+      if (!fb.isReadyFor(cfg)) await initSync();
       off = fb.watchUser((u) => setUser(u?.email || null));
     });
     return () => off();
-  }, [cfg?.projectId]);
+  }, [cfg?.projectId, cfg?.apiKey, cfg?.appId]);
 
   const saveCfg = async () => {
     const fb = await import('../lib/sync/firebase');
@@ -358,12 +358,15 @@ function SyncCard() {
     if (!c) return setErr('Je ne reconnais pas cette configuration. Copie tout le bloc « firebaseConfig » depuis Firebase.');
     setErr('');
     await setMeta('firebaseConfig', c);
+    await initSync();
   };
   const auth = async (createAccount: boolean) => {
     setBusy(true);
     setErr('');
     try {
       const fb = await import('../lib/sync/firebase');
+      // Toujours la configuration enregistrée, jamais une ancienne restée en mémoire.
+      if (!fb.isReadyFor(cfg)) await initSync();
       await fb.login(email.trim(), pwd, createAccount);
       toast(createAccount ? 'Compte créé, synchronisation lancée' : 'Connectée, synchronisation lancée');
     } catch (e) {
@@ -417,7 +420,13 @@ function SyncCard() {
           >
             Mot de passe oublié
           </button>
-          <button className="btn-ghost text-xs" onClick={() => setMeta('firebaseConfig', null)}>
+          <button
+            className="btn-ghost text-xs"
+            onClick={async () => {
+              setErr('');
+              await setMeta('firebaseConfig', null);
+            }}
+          >
             Changer de configuration
           </button>
         </>
