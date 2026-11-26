@@ -3,6 +3,7 @@ import {
   Repeat, Dumbbell, Utensils, ShoppingBag, Car, PartyPopper, ChefHat, Sofa, Gift, Lightbulb, NotebookPen, Coffee,
   BookOpen, Baby, PawPrint, GraduationCap, Palette, Camera, Flower2, Leaf, Music2, Film, Wine, Pill, Shirt, Train,
   Star, Target, PiggyBank, Receipt, Tag, Beer, Martini, TreePalm, Laptop, Moon, Flame, Users, Bed, Ticket, Cigarette,
+  Droplets, Bath, WashingMachine, SprayCan, Scissors, Library, Brain, CookingPot, ShowerHead, Gem, ScrollText, Archive, CloudRain, Droplet,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -16,6 +17,9 @@ export const ICONS: Record<string, LucideIcon> = {
   shirt: Shirt, train: Train, star: Star, target: Target, piggy: PiggyBank, receipt: Receipt, tag: Tag,
   beer: Beer, martini: Martini, palm: TreePalm, laptop: Laptop, moon: Moon, flame: Flame, users: Users, bed: Bed,
   ticket: Ticket, cigarette: Cigarette,
+  droplets: Droplets, bath: Bath, laundry: WashingMachine, spray: SprayCan, scissors: Scissors, library: Library,
+  brain: Brain, pot: CookingPot, shower: ShowerHead, gem: Gem, scroll: ScrollText, archive: Archive,
+  rain: CloudRain, drop: Droplet,
 };
 export const ICON_NAMES = Object.keys(ICONS);
 

@@ -176,7 +176,7 @@ export function TodayPage() {
           <MoodPicker date={today} value={todayLog?.mood} size="sm" />
           {todayLog?.mood && (
             <button className="mt-2 w-full text-center text-xs text-rasp" onClick={() => navigate('journal', today)}>
-              {MOODS[todayLog.mood - 1].label} journée · ajouter mes sorties et activités →
+              <span className="font-serif text-sm italic">a {MOODS[todayLog.mood - 1].label} day</span> · ajouter mes activités →
             </button>
           )}
         </div>

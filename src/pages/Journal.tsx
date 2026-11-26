@@ -7,7 +7,7 @@ import type { Contact, DayLog, ISODate, Tracker } from '../db/types';
 import { WEEKDAYS_SHORT, addDays, addMonths, capitalize, fmt, fmtMonth, monthOf, monthStart, range, relativeDay, weekStart } from '../lib/dates';
 import { useToday } from '../lib/hooks';
 import { COLORS, Icon } from '../lib/icons';
-import { GROUP_LABEL, MOODS, monthJournal, topDetails } from '../lib/journal';
+import { GROUP_LABEL, GROUP_ORDER, MOODS, monthJournal, topDetails } from '../lib/journal';
 import { navigate, useRoute } from '../lib/ui-store';
 
 const EMPTY: never[] = [];
@@ -39,6 +39,22 @@ export async function saveLog(date: ISODate, patch: Partial<DayLog>) {
   await upsert<DayLog>('daylogs', { id: date, date, items: cur && !cur.deleted ? cur.items : [], ...(cur && !cur.deleted ? { mood: cur.mood, text: cur.text } : {}), ...patch });
 }
 
+/** Petite bulle de couleur, de plus en plus lumineuse avec l'humeur. */
+export function MoodOrb({ color, level, size = 30 }: { color: string; level: number; size?: number }) {
+  return (
+    <span
+      aria-hidden
+      className="block rounded-full"
+      style={{
+        width: size,
+        height: size,
+        background: `radial-gradient(circle at 32% 30%, #fff ${4 + level * 3}%, ${color}${level >= 3 ? '' : 'cc'} 72%)`,
+        boxShadow: `0 0 ${level * 3}px ${color}${level >= 4 ? '99' : '44'}`,
+      }}
+    />
+  );
+}
+
 export function MoodPicker({ date, value, size = 'md' }: { date: ISODate; value?: number; size?: 'sm' | 'md' }) {
   return (
     <div className="flex justify-between gap-1.5" role="radiogroup" aria-label="Note de la journée">
@@ -54,8 +70,8 @@ export function MoodPicker({ date, value, size = 'md' }: { date: ISODate; value?
             style={on ? ({ '--tw-ring-color': m.color } as React.CSSProperties) : undefined}
             data-testid={`mood-${m.value}`}
           >
-            <span className={size === 'sm' ? 'text-2xl' : 'text-3xl'}>{m.emoji}</span>
-            <span className={`text-[10.5px] font-medium ${on ? 'text-plum' : 'text-soft'}`}>{m.label}</span>
+            <MoodOrb color={m.color} level={m.value} size={size === 'sm' ? 28 : 34} />
+            <span className={`font-serif text-[15px] italic leading-tight ${on ? 'font-semibold text-plum' : 'text-soft'}`}>{m.label}</span>
           </button>
         );
       })}
@@ -134,7 +150,7 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
     saveLog(date, { items: items.filter((i) => i.trackerId !== id) });
     setEditing(null);
   };
-  const groups = (['sorties', 'moi', 'travail', 'autres'] as Tracker['group'][]).map((g) => ({ g, list: trackers.filter((t) => (t.group || 'autres') === g) })).filter((x) => x.list.length);
+  const groups = GROUP_ORDER.map((g) => ({ g, list: trackers.filter((t) => (t.group || 'autres') === g) })).filter((x) => x.list.length);
 
   return (
     <div className="card anim-rise space-y-5 p-4">
@@ -152,7 +168,7 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
       </div>
 
       <div className="space-y-2">
-        <div className="label">Ma note du jour</div>
+        <div className="label">Mood of the day</div>
         <MoodPicker date={date} value={log?.mood} />
       </div>
 
@@ -347,7 +363,11 @@ function MonthReview({
     { label: 'Jours de sortie', value: s.perGroup.sorties },
     { label: 'Alcool', value: pick('tr-alcool')?.days },
     { label: 'Dérive', value: pick('tr-derive')?.days },
-  ].filter((h) => h.value !== undefined);
+    { label: 'Hendaye', value: pick('tr-hendaye')?.days },
+    { label: 'Règles', value: pick('tr-regles')?.days },
+    { label: 'Ménage', value: pick('tr-menage')?.days },
+    { label: 'Skincare', value: pick('tr-skincare')?.days },
+  ].filter((h, i) => h.value !== undefined && (i < 3 || (h.value || 0) > 0));
   const maxDays = Math.max(1, ...s.perTracker.map((p) => p.days));
 
   return (
@@ -370,7 +390,7 @@ function MonthReview({
           <div className="mt-1 flex items-center gap-1.5 font-serif text-2xl font-semibold text-plum" data-testid="mood-avg">
             {mood ? (
               <>
-                <span>{mood.emoji}</span> {String(s.moodAvg).replace('.', ',')}
+                <MoodOrb color={mood.color} level={mood.value} size={22} /> <span className="italic">{mood.label}</span> <span className="font-sans text-xs font-normal text-soft">{String(s.moodAvg).replace('.', ',')}/5</span>
               </>
             ) : (
               '—'
@@ -429,7 +449,7 @@ function MonthReview({
           {MOODS.map((m) => (
             <span key={m.value} className="inline-flex items-center gap-1">
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
-              {m.label}
+              <span className="font-serif text-[13px] italic">{m.label}</span>
             </span>
           ))}
         </div>
@@ -459,7 +479,7 @@ function MonthReview({
         <p className="text-xs text-soft">
           {s.daysLogged} jour{s.daysLogged > 1 ? 's' : ''} renseigné{s.daysLogged > 1 ? 's' : ''}. Touche une activité pour la voir dans le calendrier.
         </p>
-        {s.perTracker.map(({ tracker: t, days: n, details }) => {
+        {s.perTracker.filter((p) => p.days > 0).map(({ tracker: t, days: n, details }) => {
           const top = topDetails(details);
           return (
             <button

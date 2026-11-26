@@ -1,3 +1,4 @@
+import { GROUP_LABEL, GROUP_ORDER } from '../lib/journal';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowDown, ArrowUp, Bell, Cloud, Download, Moon, Palette, Plus, RefreshCw, ShieldCheck, Sun, Trash2, Upload, User } from 'lucide-react';
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
@@ -150,10 +151,11 @@ function ListManager({ table, title, withKind, withGroup, kindFilter }: { table:
                 </div>
                 {withGroup && (
                   <select className="input py-2 text-sm" value={c.group || 'autres'} onChange={(e) => update(table, c.id, { group: e.target.value } as any)} aria-label="Famille">
-                    <option value="sorties">Sorties</option>
-                    <option value="moi">Moi</option>
-                    <option value="travail">Travail et voyages</option>
-                    <option value="autres">Autres</option>
+                    {GROUP_ORDER.map((g) => (
+                      <option key={g} value={g}>
+                        {GROUP_LABEL[g]}
+                      </option>
+                    ))}
                   </select>
                 )}
                 {withKind && (

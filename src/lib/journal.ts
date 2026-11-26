@@ -1,18 +1,25 @@
 import type { Contact, DayLog, ISOMonth, Tracker } from '../db/types';
 import { monthEnd, monthStart } from './dates';
 
+/** Humeurs : des mots doux en anglais et une couleur, sans émoji. */
 export const MOODS = [
-  { value: 1, label: 'Difficile', emoji: '😣', color: '#9C8A96' },
-  { value: 2, label: 'Bof', emoji: '😕', color: '#C7A0C9' },
-  { value: 3, label: 'Correcte', emoji: '🙂', color: '#E0A3C4' },
-  { value: 4, label: 'Belle', emoji: '😊', color: '#D46A8C' },
-  { value: 5, label: 'Géniale', emoji: '🤩', color: '#A83278' },
+  { value: 1, label: 'heavy', color: '#9C8A96' },
+  { value: 2, label: 'meh', color: '#C7A0C9' },
+  { value: 3, label: 'calm', color: '#E0A3C4' },
+  { value: 4, label: 'glowing', color: '#D46A8C' },
+  { value: 5, label: 'magic', color: '#A83278' },
 ];
+
+export const GROUP_ORDER: Tracker['group'][] = ['sorties', 'moi', 'cycle', 'soin', 'maison', 'travail', 'etudes', 'autres'];
 
 export const GROUP_LABEL: Record<Tracker['group'], string> = {
   sorties: 'Sorties',
   moi: 'Moi',
+  cycle: 'Mon cycle',
+  soin: 'Self-care',
+  maison: 'À la maison',
   travail: 'Travail et voyages',
+  etudes: 'Études',
   autres: 'Autres',
 };
 
@@ -35,7 +42,7 @@ export function monthJournal(logs: DayLog[], trackers: Tracker[], month: ISOMont
   const live = trackers.filter((t) => !t.deleted);
   const byId = new Map(live.map((t) => [t.id, t]));
   const moods = inMonth.map((l) => l.mood).filter((m): m is number => typeof m === 'number');
-  const perGroup: Record<Tracker['group'], number> = { sorties: 0, moi: 0, travail: 0, autres: 0 };
+  const perGroup: Record<Tracker['group'], number> = { sorties: 0, moi: 0, cycle: 0, soin: 0, maison: 0, travail: 0, etudes: 0, autres: 0 };
   const cname = new Map(contacts.map((c) => [c.id, c.name]));
   const counts = new Map<string, { days: Set<string>; details: string[] }>();
   for (const l of inMonth) {

@@ -66,6 +66,32 @@ export const DEFAULT_TRACKERS: [string, string, string, string, Tracker['group']
   ['tr-voyage', 'Voyage', 'plane', '#3E9C9B', 'travail'],
 ];
 
+/** Ajoutés dans une mise à jour : maison, soin de soi et études. */
+export const MORE_TRACKERS: [string, string, string, string, Tracker['group']][] = [
+  ['tr-hendaye', 'Hendaye (gueule de bois)', 'rain', '#9C8A96', 'moi'],
+  ['tr-regles', 'Règles', 'drop', '#C0395A', 'cycle'],
+  ['tr-spm', 'SPM (prémenstruel)', 'moon', '#8E6BB0', 'cycle'],
+  ['tr-maison', 'Journée à la maison', 'home', '#C7A0C9', 'maison'],
+  ['tr-menage', 'Ménage', 'spray', '#8E6BB0', 'maison'],
+  ['tr-lessive', 'Lessive', 'laundry', '#5B6FB5', 'maison'],
+  ['tr-vaisselle', 'Vaisselle', 'droplets', '#3E9C9B', 'maison'],
+  ['tr-rangement', 'Rangement', 'archive', '#9C8A96', 'maison'],
+  ['tr-courses', 'Courses', 'shopping-basket', '#4E9A6A', 'maison'],
+  ['tr-cuisine', 'Cuisine maison', 'pot', '#C98A4B', 'maison'],
+  ['tr-douche', 'Douche', 'shower', '#5B6FB5', 'soin'],
+  ['tr-skincare', 'Skincare', 'sparkles', '#E0789E', 'soin'],
+  ['tr-cheveux', 'Soin des cheveux', 'scissors', '#D46A8C', 'soin'],
+  ['tr-ongles', 'Ongles', 'gem', '#A83278', 'soin'],
+  ['tr-bain', 'Bain', 'bath', '#C7A0C9', 'soin'],
+  ['tr-lecture', 'Lecture', 'book', '#81265D', 'soin'],
+  ['tr-meditation', 'Méditation', 'leaf', '#4E9A6A', 'soin'],
+  ['tr-sieste', 'Sieste', 'bed', '#8E6BB0', 'soin'],
+  ['tr-revisions', 'Révisions', 'brain', '#A83278', 'etudes'],
+  ['tr-these', 'Préparation de la thèse', 'scroll', '#81265D', 'etudes'],
+  ['tr-cours', 'Cours', 'graduation', '#5B6FB5', 'etudes'],
+  ['tr-biblio', 'Bibliothèque', 'library', '#C98A4B', 'etudes'],
+];
+
 export const DEFAULT_PEOPLE = [
   'Léa', 'Yasmine', 'Alice', 'Rym', 'Antho', 'Roro', 'Nono', 'Rayou', 'Adri', 'Juju', 'Nico', 'Tom', 'Lyna', 'Shiraz', 'Maman', 'Nicola', 'Austin',
 ];
@@ -88,6 +114,13 @@ export async function seedDefaults() {
       DEFAULT_TRACKERS.map(([id, name, icon, color, group], i) => seedRec<Tracker>({ id, name, icon, color, group, order: i })),
     );
     await db.meta.put({ key: 'seededTrackers', value: true });
+  }
+  if (!(await db.meta.get('seededTrackers2'))) {
+    await putSeed(
+      'trackers',
+      MORE_TRACKERS.map(([id, name, icon, color, group], i) => seedRec<Tracker>({ id, name, icon, color, group, order: 100 + i })),
+    );
+    await db.meta.put({ key: 'seededTrackers2', value: true });
   }
   if (!(await db.meta.get('seededPeople'))) {
     await putSeed(

@@ -176,6 +176,8 @@ export interface Note extends BaseRecord {
   favorite: boolean;
 }
 
+export type TrackerGroup = 'sorties' | 'moi' | 'cycle' | 'soin' | 'maison' | 'travail' | 'etudes' | 'autres';
+
 /** Une activité ou un état à suivre au quotidien (sortie, verre, bureau, congé…). */
 export interface Tracker extends BaseRecord {
   name: string;
@@ -183,7 +185,7 @@ export interface Tracker extends BaseRecord {
   color: string;
   order: number;
   /** Famille de statistiques : sorties, moi, travail, autres. */
-  group: 'sorties' | 'moi' | 'travail' | 'autres';
+  group: TrackerGroup;
 }
 
 /** Une personne (amie, famille, animal) ou un lieu (bar, boîte, resto) à sélectionner dans le journal. */
