@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
       single
         ? viteSingleFile()
         : VitePWA({
-            registerType: 'prompt',
+            registerType: 'autoUpdate',
             includeAssets: ['icons/*.png', 'favicon.svg'],
             manifest: {
               name: 'Life Planner',
@@ -39,6 +39,8 @@ export default defineConfig(({ mode }) => {
               globIgnores: ['**/*cyrillic*', '**/*vietnamese*', '**/*greek*'],
               navigateFallback: 'index.html',
               cleanupOutdatedCaches: true,
+              skipWaiting: true,
+              clientsClaim: true,
               maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
             },
           }),
