@@ -3,7 +3,7 @@ import { addDays, todayISO, timeToMin } from './dates';
 import { financeOccurrencesIn, eur } from './finance';
 import { expandTasks } from './tasks';
 
-const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\;');
+const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 const d8 = (iso: string) => iso.replace(/-/g, '');
 const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
 
@@ -23,7 +23,9 @@ export async function buildICS(remindMin = 30): Promise<string> {
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Life Planner//FR', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:Life Planner'];
   const ds = stamp();
   for (const t of tasks) {
-    lines.push('BEGIN:VEVENT', `UID:${t.id}@life-planner`, `DTSTAMP:${ds}`, `SUMMARY:${esc(t.title)}`);
+    // UID fixe + SEQUENCE/LAST-MODIFIED : un nouvel import met à jour le même événement au lieu d'en créer un autre.
+    const mod = new Date(t.updatedAt || 1).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+    lines.push('BEGIN:VEVENT', `UID:${t.id}@life-planner`, `DTSTAMP:${ds}`, `LAST-MODIFIED:${mod}`, `SEQUENCE:${Math.floor((t.updatedAt || 0) / 1000) % 2147483647}`, `SUMMARY:${esc(t.title)}`);
     if (t.time) {
       const s = timeToMin(t.time);
       const e = s + (t.duration || (t.kind === 'event' ? 60 : 30));
