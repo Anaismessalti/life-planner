@@ -276,8 +276,8 @@ describe('déplacer', () => {
 describe('configuration Firebase collée', () => {
   it('accepte le bloc complet de Firebase, et les guillemets typographiques', async () => {
     const { parseConfig } = await import('../src/lib/sync/firebase');
-    const full = `import { initializeApp } from "firebase/app";\nconst firebaseConfig = {\n  apiKey: "AIzaX-1",\n  authDomain: "p.firebaseapp.com",\n  projectId: "p",\n  appId: "1:2:web:3"\n};\nconst app = initializeApp(firebaseConfig);`;
-    expect(parseConfig(full)).toMatchObject({ apiKey: 'AIzaX-1', projectId: 'p', appId: '1:2:web:3' });
+    const full = `import { initializeApp } from "firebase/app";\nconst firebaseConfig = {\n  apiKey: "AIzaSyTestTestTestTestTestTestTest-1234",\n  authDomain: "p.firebaseapp.com",\n  projectId: "p",\n  appId: "1:2:web:3"\n};\nconst app = initializeApp(firebaseConfig);`;
+    expect(parseConfig(full)).toMatchObject({ apiKey: 'AIzaSyTestTestTestTestTestTestTest-1234', projectId: 'p', appId: '1:2:web:3' });
     expect(parseConfig(full.replace(/"/g, '“'))).toMatchObject({ projectId: 'p' });
     expect(parseConfig('const firebaseConfig = { … }')).toBeNull();
   });
