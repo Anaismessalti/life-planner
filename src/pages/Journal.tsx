@@ -97,12 +97,18 @@ export function MoodPicker({ date, value, size = 'md' }: { date: ISODate; value?
       data-testid="mood-picker"
     >
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-soft">Today feels</span>
-        <span className={`font-serif italic leading-none text-plum transition-all ${sm ? 'text-[22px]' : 'text-[28px]'} ${sel ? 'font-semibold' : 'opacity-40'}`} data-testid="mood-word">
-          {sel ? sel.label : '…'}
-        </span>
+        <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.2em] text-soft">Today feels</span>
+        {sel ? (
+          <span className={`truncate font-serif font-semibold italic leading-none text-plum ${sm ? 'text-[22px]' : 'text-[28px]'}`} data-testid="mood-word">
+            {sel.label}
+          </span>
+        ) : (
+          <span className="truncate font-serif text-[15px] italic text-soft" data-testid="mood-word">
+            slide the pearl
+          </span>
+        )}
       </div>
-      <p className="mt-1 min-h-[16px] text-right font-serif text-[13px] italic text-soft">{sel ? sel.line : 'slide the pearl'}</p>
+      {sel && <p className="mt-1 truncate text-right font-serif text-[13px] italic text-soft">{sel.line}</p>}
       <div
         ref={ribbon}
         className={`relative mt-2 touch-none select-none rounded-full ${sm ? 'h-9' : 'h-11'}`}
@@ -212,7 +218,7 @@ export function FeelingsPicker({ date, value }: { date: ISODate; value?: DayLog[
   const selected = cur.map((c) => FEELING_BY_ID.get(c.id)).filter((f): f is (typeof FEELINGS)[number] => !!f && f.group !== tab);
   return (
     <div className="space-y-2" data-testid="feelings">
-      <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+      <div className="flex flex-wrap gap-1">
         {FEELING_GROUPS.map((g) => {
           const n = cur.filter((c) => FEELING_BY_ID.get(c.id)?.group === g.id).length;
           return (

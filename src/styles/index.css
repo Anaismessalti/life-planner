@@ -93,6 +93,44 @@ input, textarea, select { font-size: 16px; }
   }
 }
 
+/* Champs date / heure : sur iPhone, Safari leur donne une largeur minimale propre qui les fait déborder
+   de leur carte (heure de réveil décalée). On les ramène à la largeur de leur colonne. */
+input[type='date'],
+input[type='time'],
+input[type='month'],
+input[type='datetime-local'] {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.75rem;
+}
+@supports (-webkit-touch-callout: none) {
+  input[type='date'],
+  input[type='time'],
+  input[type='month'],
+  input[type='datetime-local'] {
+    -webkit-appearance: none;
+    appearance: none;
+    text-align: left;
+  }
+  input::-webkit-date-and-time-value {
+    text-align: left;
+    margin: 0;
+    min-height: 1.5em;
+  }
+}
+/* Une colonne de grille ne doit jamais s'élargir à cause de son contenu. */
+.grid > *,
+label {
+  min-width: 0;
+}
+/* Rangée qui défile sur le côté : un fondu à droite montre qu'il y a la suite. */
+.fade-x {
+  -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
+  mask-image: linear-gradient(90deg, #000 85%, transparent);
+}
+
 /* Chiffres alignés (le « 0 » ne ressemble plus à un « o » dans la police à empattements). */
 .font-serif {
   font-variant-numeric: lining-nums;
