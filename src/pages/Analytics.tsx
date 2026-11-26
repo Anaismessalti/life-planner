@@ -9,7 +9,7 @@ import { analyze, fmtPct, periodOf, shiftPeriod, trend, type Analytics, type Cou
 import { eur, monthSummary } from '../lib/finance';
 import { DEFAULT_HABITS, normalizeHabits, type HabitSetting } from '../lib/bridge';
 import { useFinance, useSetting } from '../lib/hooks';
-import { balance, buildReview, crossings, habitsOver, CROSS, type PoleStat, type Review } from '../lib/review';
+import { balance, buildReview, crossings, habitsOver, CROSS, REVIEW, type PoleStat, type Review } from '../lib/review';
 import { Icon } from '../lib/icons';
 import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
 import { SLEEP_QUALITY, fmtDuration } from '../lib/wellbeing';
@@ -231,17 +231,35 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
           <Wrapped a={a} prev={prev} />
 
           <div className="card space-y-2 p-4" data-testid="completion">
-            <div className="flex items-baseline justify-between">
-              <div className="label">Journal rempli</div>
-              <div className="font-serif text-xl font-semibold text-plum">
-                {a.logged}/{a.elapsed} jours · {fmtPct(a.completion)}
-              </div>
-            </div>
-            <Progress value={a.completion * 100} />
-            <p className="text-[11px] leading-snug text-soft">
-              Un jour non renseigné n'est pas un jour « sans activité ». Les pourcentages se calculent sur les {a.elapsed} jours écoulés
-              {a.elapsed < diffDays(period.to < today ? period.to : today, period.from) + 1 ? ' depuis que tu utilises ton journal' : ''}.
-            </p>
+            {a.elapsed < REVIEW.young ? (
+              <>
+                <div className="flex items-baseline justify-between">
+                  <div className="label">Début de ton journal</div>
+                  <div className="font-serif text-xl font-semibold text-plum">
+                    Jour {a.elapsed} sur {REVIEW.young}
+                  </div>
+                </div>
+                <Progress value={(a.elapsed / REVIEW.young) * 100} />
+                <p className="text-[11px] leading-snug text-soft">
+                  {a.logged} jour{a.logged > 1 ? 's' : ''} noté{a.logged > 1 ? 's' : ''}. Les pourcentages apparaîtront au {REVIEW.young}e jour : avant, « 1 jour sur 1 » ferait
+                  toujours 100 % et ne dirait rien de ta vie.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between">
+                  <div className="label">Journal rempli</div>
+                  <div className="font-serif text-xl font-semibold text-plum">
+                    {a.logged}/{a.elapsed} jours · {fmtPct(a.completion)}
+                  </div>
+                </div>
+                <Progress value={a.completion * 100} />
+                <p className="text-[11px] leading-snug text-soft">
+                  Un jour non renseigné n'est pas un jour « sans activité ». Les pourcentages se calculent sur les {a.elapsed} jours écoulés
+                  {a.elapsed < diffDays(period.to < today ? period.to : today, period.from) + 1 ? ' depuis que tu utilises ton journal' : ''}.
+                </p>
+              </>
+            )}
           </div>
 
           <Section title="L'essentiel">
@@ -252,7 +270,7 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                   <div className="mt-0.5 font-serif text-[28px] font-semibold leading-none" data-testid={`tile-${t.id}-days`}>
                     {t.c.days}
                     <span className={`ml-1 font-sans text-xs font-normal ${t.dark ? 'text-white/80' : 'text-soft'}`}>
-                      jour{t.c.days > 1 ? 's' : ''} · {fmtPct(t.c.freq)}
+                      jour{t.c.days > 1 ? 's' : ''}{a.elapsed >= REVIEW.young ? ` · ${fmtPct(t.c.freq)}` : ''}
                     </span>
                   </div>
                   <div className={t.dark ? '[&_*]:!text-white/80' : ''}>
@@ -397,7 +415,7 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                       {p.spent > 0 && <span className="ml-1 text-xs font-normal text-soft">· {eur(p.spent)}</span>}
                     </span>
                     <span className="w-12 text-right">{p.days}</span>
-                    <span className="w-14 text-right text-soft">{fmtPct(p.freq)}</span>
+                    <span className="w-14 text-right text-soft">{a.elapsed >= REVIEW.young ? fmtPct(p.freq) : ''}</span>
                   </button>
                 ))}
               {a.totalActivities === 0 && <p className="py-3 text-center text-sm text-soft">Aucune activité sur cette période.</p>}
@@ -421,7 +439,7 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                       </div>
                     ))}
                     <p className="pt-1 text-[11px] text-soft">
-                      Vie sociale : {a.key.social.days} jour{a.key.social.days > 1 ? 's' : ''} avec au moins une personne ({fmtPct(a.key.social.freq)} des jours).
+                      Vie sociale : {a.key.social.days} jour{a.key.social.days > 1 ? 's' : ''} avec au moins une personne{a.elapsed >= REVIEW.young ? ` (${fmtPct(a.key.social.freq)} des jours)` : ''}.
                     </p>
                   </div>
                 )}
@@ -688,7 +706,7 @@ function WellbeingSections({ a, prev }: { a: Analytics; prev: Analytics }) {
                 <div className="font-serif text-2xl font-semibold text-plum" data-testid="fmj-days">
                   {f.days}
                 </div>
-                <div className="text-[10px] uppercase tracking-wider text-soft">jours · {fmtPct(f.days / Math.max(1, a.elapsed))}</div>
+                <div className="text-[10px] uppercase tracking-wider text-soft">jours{a.elapsed >= REVIEW.young ? ` · ${fmtPct(f.days / Math.max(1, a.elapsed))}` : ''}</div>
               </div>
               <div>
                 <div className="font-serif text-2xl font-semibold text-plum">{f.gratitudes}</div>

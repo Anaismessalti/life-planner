@@ -196,7 +196,7 @@ export function FmjNudge({ date, log }: { date: ISODate; log?: DayLog }) {
   const f = log?.fmj;
   const doneNow = evening ? eveningDone(f) : morningDone(f);
   return (
-    <button className="card flex w-full items-center gap-3 p-3 text-left" onClick={() => navigate('journal', date)} data-testid="fmj-nudge">
+    <button className="card flex w-full items-center gap-3 p-3 text-left" onClick={() => navigate('journal', 'fmj')} data-testid="fmj-nudge">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blush to-mauve/60 font-serif text-sm italic text-plum">5′</span>
       <span className="min-w-0 flex-1">
         <span className="block font-serif text-[17px] italic text-plum">{evening ? 'Evening reflection' : 'Morning pages'}</span>

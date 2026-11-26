@@ -3,11 +3,11 @@ import { monthEnd, monthStart } from './dates';
 
 /** Humeurs : des mots doux en anglais et une couleur, sans émoji. */
 export const MOODS = [
-  { value: 1, label: 'rough', color: '#9C8A96' },
-  { value: 2, label: 'meh', color: '#C7A0C9' },
-  { value: 3, label: 'okay', color: '#E0A3C4' },
-  { value: 4, label: 'glowing', color: '#D46A8C' },
-  { value: 5, label: 'magic', color: '#A83278' },
+  { value: 1, label: 'rough', color: '#9C8A96', line: 'heavy skies, be gentle with yourself' },
+  { value: 2, label: 'meh', color: '#C7A0C9', line: 'a little grey around the edges' },
+  { value: 3, label: 'okay', color: '#E0A3C4', line: 'soft and steady' },
+  { value: 4, label: 'glowing', color: '#D46A8C', line: 'warm from the inside' },
+  { value: 5, label: 'magic', color: '#A83278', line: 'pure stardust' },
 ];
 
 export const GROUP_ORDER: Tracker['group'][] = ['sorties', 'amour', 'social', 'moi', 'cycle', 'sante', 'soin', 'maison', 'travail', 'etudes', 'autres'];

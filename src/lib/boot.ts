@@ -6,11 +6,13 @@ import { runRollover } from './tasks';
 import { startSync, stopSync, queueEverything, waitFirstSync } from './sync/engine';
 import { migrateJournal } from './lifeforms';
 import { repairData } from './repair';
+import { dropMeditationHabit } from './bridge';
 
 export async function boot() {
   await seedDefaults();
   await migrateJournal().catch((e) => console.error('Migration journal', e));
   await repairData().catch((e) => console.error('Réparation', e));
+  await dropMeditationHabit().catch((e) => console.error('Habitudes', e));
   const synced = !!(await getMeta('firebaseConfig', null));
   // Avec la synchro : on récupère d'abord les changements des autres appareils (sinon une tâche
   // cochée sur l'iPhone pourrait être reportée ici). Sans synchro : report immédiat.

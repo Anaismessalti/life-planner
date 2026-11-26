@@ -22,6 +22,8 @@ export const median = (v: number[]) => {
 export const REVIEW = {
   /** En dessous de cette part de jours renseignés, le bilan est signalé comme partiel. */
   partial: 0.5,
+  /** Avant ce nombre de jours de journal, aucun pourcentage : « 1 jour sur 1 = 100 % » ne veut rien dire. */
+  young: 7,
   /** Jours d'humeur nécessaires pour qualifier la période. */
   moodDays: 10,
   /** Tâches nécessaires pour parler d'un taux de réalisation. */
@@ -97,7 +99,8 @@ export function buildReview(a: Analytics, history: Analytics[], opts: { habits?:
   const word = a.period.kind === 'week' ? 'semaine' : a.period.kind === 'year' ? 'année' : 'mois';
   const ce = a.period.kind === 'month' ? 'ce' : 'cette';
   const title = `${a.period.kind === 'month' ? 'Mon' : 'Ma'} ${word} en bref`;
-  const partial = a.elapsed > 0 && a.logged / a.elapsed < REVIEW.partial;
+  const young = a.elapsed > 0 && a.elapsed < REVIEW.young;
+  const partial = !young && a.elapsed > 0 && a.logged / a.elapsed < REVIEW.partial;
   const coverage = {
     logged: a.logged,
     elapsed: a.elapsed,
@@ -105,7 +108,9 @@ export function buildReview(a: Analytics, history: Analytics[], opts: { habits?:
     text:
       a.elapsed === 0
         ? ''
-        : `Journal rempli ${a.logged} jour${a.logged > 1 ? 's' : ''} sur ${a.elapsed}.${partial ? ' Bilan partiel : il décrit seulement les jours que tu as notés.' : ''}`,
+        : young
+          ? `Jour ${a.elapsed} de ton journal (${a.logged} jour${a.logged > 1 ? 's' : ''} noté${a.logged > 1 ? 's' : ''}) : ton premier vrai bilan arrive au ${REVIEW.young}e jour.`
+          : `Journal rempli ${a.logged} jour${a.logged > 1 ? 's' : ''} sur ${a.elapsed}.${partial ? ' Bilan partiel : il décrit seulement les jours que tu as notés.' : ''}`,
   };
   const lived: string[] = [];
   const done: string[] = [];

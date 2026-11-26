@@ -11,6 +11,7 @@ import { COLORS, Icon } from '../lib/icons';
 import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
 import { FEELINGS, FEELING_BY_ID, FEELING_GROUPS, FORMS, formOf, setJournalExpense } from '../lib/lifeforms';
 import { FiveMinuteCard, SleepCard } from './JournalWell';
+import { eveningDone, morningDone } from '../lib/wellbeing';
 import { navigate, useRoute } from '../lib/ui-store';
 import { AnalyticsView } from './Analytics';
 
@@ -72,26 +73,101 @@ export function MoodOrb({ color, level, size = 30 }: { color: string; level: num
   );
 }
 
+/**
+ * Humeur du jour : un ruban de couleur (du gris pluie au framboise) sur lequel on fait glisser une perle,
+ * ou qu'on touche directement. Le mot choisi s'affiche en grand, la carte prend la teinte de l'humeur.
+ * Toucher à nouveau l'humeur choisie l'efface.
+ */
 export function MoodPicker({ date, value, size = 'md' }: { date: ISODate; value?: number; size?: 'sm' | 'md' }) {
+  const [drag, setDrag] = useState<number | undefined>();
+  const moved = useRef(false);
+  const ribbon = useRef<HTMLDivElement>(null);
+  const shown = drag ?? value;
+  const sel = MOODS.find((m) => m.value === shown);
+  const at = (clientX: number) => {
+    const r = ribbon.current!.getBoundingClientRect();
+    return Math.min(5, Math.max(1, Math.floor(((clientX - r.left) / r.width) * 5) + 1));
+  };
+  const commit = (v: number | undefined) => saveLog(date, { mood: v });
+  const sm = size === 'sm';
   return (
-    <div className="flex justify-between gap-1.5" role="radiogroup" aria-label="Note de la journée">
-      {MOODS.map((m) => {
-        const on = value === m.value;
-        return (
+    <div
+      className="rounded-3xl px-3.5 pb-3 pt-3 transition-colors duration-500"
+      style={{ background: sel ? `linear-gradient(135deg, ${sel.color}2e, ${sel.color}0f 70%)` : 'rgba(199,160,201,0.10)' }}
+      data-testid="mood-picker"
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-soft">Today feels</span>
+        <span className={`font-serif italic leading-none text-plum transition-all ${sm ? 'text-[22px]' : 'text-[28px]'} ${sel ? 'font-semibold' : 'opacity-40'}`} data-testid="mood-word">
+          {sel ? sel.label : '…'}
+        </span>
+      </div>
+      <p className="mt-1 min-h-[16px] text-right font-serif text-[13px] italic text-soft">{sel ? sel.line : 'slide the pearl'}</p>
+      <div
+        ref={ribbon}
+        className={`relative mt-2 touch-none select-none rounded-full ${sm ? 'h-9' : 'h-11'}`}
+        style={{ background: `linear-gradient(90deg, ${MOODS.map((m) => m.color).join(', ')})`, boxShadow: 'inset 0 1px 3px rgba(56,35,50,0.18)' }}
+        role="radiogroup"
+        aria-label="Humeur du jour"
+        onPointerDown={(e) => {
+          ribbon.current!.setPointerCapture(e.pointerId);
+          moved.current = false;
+          setDrag(at(e.clientX));
+        }}
+        onPointerMove={(e) => {
+          if (drag === undefined) return;
+          const v = at(e.clientX);
+          if (v !== drag) (moved.current = true), setDrag(v);
+        }}
+        onPointerUp={(e) => {
+          if (drag === undefined) return;
+          const v = at(e.clientX);
+          setDrag(undefined);
+          // Un simple toucher sur l'humeur déjà choisie l'efface ; un glissement la garde.
+          commit(!moved.current && v === value ? undefined : v);
+        }}
+        onPointerCancel={() => setDrag(undefined)}
+      >
+        {MOODS.map((m) => (
           <button
             key={m.value}
+            type="button"
             role="radio"
-            aria-checked={on}
-            onClick={() => saveLog(date, { mood: on ? undefined : m.value })}
-            className={`flex min-h-[64px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-2 transition active:scale-95 ${on ? 'bg-card shadow-soft ring-2' : 'opacity-70 hover:opacity-100'}`}
-            style={on ? ({ '--tw-ring-color': m.color } as React.CSSProperties) : undefined}
+            aria-checked={value === m.value}
+            aria-label={m.label}
+            className="absolute inset-y-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-white"
+            style={{ left: `${(m.value - 1) * 20}%`, width: '20%' }}
+            // Le pointeur est géré par le ruban ; le clavier (Entrée, Espace) passe par ici.
+            onClick={(e) => e.detail === 0 && commit(value === m.value ? undefined : m.value)}
             data-testid={`mood-${m.value}`}
           >
-            <MoodOrb color={m.color} level={m.value} size={size === 'sm' ? 28 : 34} />
-            <span className={`font-serif text-[15px] italic leading-tight ${on ? 'font-semibold text-plum' : 'text-soft'}`}>{m.label}</span>
+            <span className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70" />
           </button>
-        );
-      })}
+        ))}
+        {sel && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 rounded-full transition-[left] duration-300 ease-[cubic-bezier(.34,1.56,.64,1)]"
+            style={{
+              left: `${(sel.value - 0.5) * 20}%`,
+              width: sm ? 30 : 38,
+              height: sm ? 30 : 38,
+              transform: 'translate(-50%, -50%)',
+              background: `radial-gradient(circle at 32% 28%, #fff 0 18%, ${sel.color} 75%)`,
+              border: '2.5px solid #fff',
+              boxShadow: `0 2px 10px ${sel.color}aa, 0 0 0 4px ${sel.color}33`,
+            }}
+            data-testid="mood-pearl"
+          />
+        )}
+      </div>
+      <div className="mt-1.5 grid grid-cols-5 text-center font-serif text-[12px] italic">
+        {MOODS.map((m) => (
+          <span key={m.value} className={m.value === shown ? 'font-semibold text-plum' : 'text-soft/80'}>
+            {m.label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -166,7 +242,7 @@ export function FeelingsPicker({ date, value }: { date: ISODate; value?: DayLog[
 export function JournalPage() {
   const today = useToday();
   const { param } = useRoute();
-  const [tab, setTab] = useState<'day' | 'stats'>(param === 'stats' ? 'stats' : 'day');
+  const [tab, setTab] = useState<'day' | 'fmj' | 'stats'>(param === 'stats' ? 'stats' : param === 'fmj' ? 'fmj' : 'day');
   const [date, setDate] = useState<ISODate>(isISODate(param) && param! <= today ? param! : today);
   const trackers = useTrackers();
   const contacts = useContacts();
@@ -175,7 +251,10 @@ export function JournalPage() {
   const topRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (param === 'stats') setTab('stats');
-    else if (isISODate(param) && param <= today) {
+    else if (param === 'fmj') {
+      setTab('fmj');
+      setDate(today);
+    } else if (isISODate(param) && param <= today) {
       setTab('day');
       setDate(param);
     }
@@ -186,7 +265,7 @@ export function JournalPage() {
       <header className="anim-rise flex items-start justify-between gap-3">
         <div>
           <p className="label">Mon journal</p>
-          <h1 className="h-title text-4xl">{tab === 'day' ? 'Mes journées' : 'Life Analytics'}</h1>
+          <h1 className="h-title text-4xl">{tab === 'day' ? 'Mes journées' : tab === 'fmj' ? 'Five Minute Journal' : 'Life Analytics'}</h1>
         </div>
         <button className="icon-btn md:hidden" onClick={() => navigate('settings')} aria-label="Paramètres">
           <Cog size={20} />
@@ -197,12 +276,15 @@ export function JournalPage() {
         onChange={setTab}
         options={[
           { value: 'day', label: 'Ma journée' },
+          { value: 'fmj', label: '5 minutes' },
           { value: 'stats', label: 'Mes stats' },
         ]}
         className="w-full"
       />
 
-      {tab === 'day' ? (
+      {tab === 'fmj' ? (
+        <FmjView date={date} setDate={setDate} today={today} logs={logs} />
+      ) : tab === 'day' ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
           <DayEditor date={date} setDate={setDate} today={today} log={log} trackers={trackers} contacts={contacts} />
           <MonthCalendar
@@ -218,6 +300,51 @@ export function JournalPage() {
       ) : (
         <AnalyticsView logs={logs} trackers={trackers} contacts={contacts} today={today} />
       )}
+    </div>
+  );
+}
+
+/** Five Minute Journal, à part de « Ma journée » : un jour à la fois, et la semaine en un coup d'œil. */
+function FmjView({ date, setDate, today, logs }: { date: ISODate; setDate: (d: ISODate) => void; today: ISODate; logs: DayLog[] }) {
+  const log = logs.find((l) => l.id === date);
+  const week = range(addDays(today, -6), today);
+  return (
+    <div className="mx-auto max-w-xl space-y-4" data-testid="fmj-view">
+      <div className="card anim-rise flex items-center justify-between p-3">
+        <button className="icon-btn" onClick={() => setDate(addDays(date, -1))} aria-label="Jour précédent">
+          <ChevronLeft size={20} />
+        </button>
+        <div className="text-center">
+          <div className="font-serif text-2xl font-semibold text-plum">{relativeDay(date, today)}</div>
+          <div className="text-xs text-soft">{capitalize(fmt(date, 'EEEE d MMMM yyyy'))}</div>
+        </div>
+        <button className="icon-btn" onClick={() => setDate(addDays(date, 1))} disabled={date >= today} aria-label="Jour suivant">
+          <ChevronRight size={20} />
+        </button>
+      </div>
+      <FiveMinuteCard key={date} date={date} value={log?.fmj} today={today} />
+      <div className="card p-3">
+        <div className="label mb-2">Ma semaine</div>
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {week.map((d) => {
+            const f = logs.find((l) => l.id === d)?.fmj;
+            const m = morningDone(f);
+            const e = eveningDone(f);
+            return (
+              <button key={d} onClick={() => setDate(d)} className={`rounded-xl py-1.5 ${d === date ? 'bg-blush' : ''}`} data-testid={`fmj-week-${d}`} aria-label={`${fmt(d, 'EEEE d')} : ${m ? 'matin fait' : 'matin vide'}, ${e ? 'soir fait' : 'soir vide'}`}>
+                <div className="text-[10px] uppercase text-soft">{fmt(d, 'EEEEE')}</div>
+                <div className="mt-1 flex justify-center gap-1">
+                  <span className={`h-2 w-2 rounded-full ${m ? 'bg-[#E9B730]' : 'bg-line'}`} />
+                  <span className={`h-2 w-2 rounded-full ${e ? 'bg-plum' : 'bg-line'}`} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-soft">
+          <span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#E9B730]" /> matin <span className="ml-2 mr-1 inline-block h-2 w-2 rounded-full bg-plum" /> soir
+        </p>
+      </div>
     </div>
   );
 }
@@ -365,7 +492,6 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
       )}
 
       <div className="space-y-2">
-        <div className="label">Mood of the day</div>
         <MoodPicker date={date} value={log?.mood} />
       </div>
 
@@ -386,8 +512,6 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
       </div>
 
       <SleepCard date={date} value={log?.sleep} />
-
-      <FiveMinuteCard key={date} date={date} value={log?.fmj} today={today} />
 
       {groups.map(({ g, list }) => (
         <div key={g} className="space-y-2">

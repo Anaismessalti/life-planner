@@ -238,6 +238,7 @@ await page.getByTestId('sleep-wake').fill('07:25');
 await page.getByTestId('sleep-q-3').click();
 await page.waitForTimeout(300);
 ok('Sommeil : durée de la nuit calculée (7 h 45)', (await page.getByTestId('sleep-duration').textContent()).includes('7 h 45'));
+await page.getByRole('button', { name: '5 minutes', exact: true }).click();
 await page.getByTestId('fmj-tab-morning').click();
 await page.getByTestId('fmj-grateful-0').fill('un matcha au soleil');
 await page.getByTestId('fmj-grateful-1').fill('Léa');
@@ -246,6 +247,8 @@ await page.getByTestId('fmj-tab-evening').click();
 await page.getByTestId('fmj-amazing-0').fill('fou rire au Perchoir');
 await page.waitForTimeout(900);
 ok('Five Minute Journal : 4 champs sur 11', (await page.getByTestId('fmj-count').textContent()).trim() === '4/11');
+await page.getByRole('button', { name: 'Ma journée', exact: true }).click();
+await page.waitForTimeout(200);
 ok('Journal : apéro avec Léa, Austin au Perchoir et dépense affichés', await page.locator('[data-testid=tracker-tr-apero]:has-text("Léa, Austin, Le Perchoir")').count() && await page.locator('[data-testid=tracker-tr-apero]:has-text("18,50")').count());
 await page.getByTestId('day-text').fill('Super soirée');
 await page.locator('button[aria-label="Jour précédent"]').click(); // tout de suite : le texte ne doit pas se perdre
@@ -266,7 +269,7 @@ ok('Analytics : HENDAYE 1 jour', (await page.getByTestId('tile-hendaye-days').te
 ok('Analytics : humeur moyenne 4', (await page.getByTestId('mood-avg').textContent()).includes('4'));
 ok('Analytics : Léa vue 2 jours', (await page.getByTestId('people-count-pe-lea').textContent()).includes('2 j'));
 ok('Analytics : nouveau lieu créé une seule fois', (await page.locator('[data-testid^=place-count-]', { hasText: 'Perchoir' }).count()) === 1);
-ok('Analytics : complétion du journal affichée', /2\/\d+ jours/.test(await page.getByTestId('completion').textContent()));
+ok('Analytics : journal tout neuf, pas de faux 100 % (« Jour N sur 7 »)', /Jour \d sur 7/.test(await page.getByTestId('completion').textContent()));
 ok('Analytics : dépenses du journal 18,50 €', (await page.getByTestId('spent-total').textContent()).includes('18,50'));
 ok('Analytics : Wrapped du mois', (await page.getByTestId('wrapped').locator('> div').count()) >= 4);
 ok('Analytics : note moyenne des journées 8/10', (await page.getByTestId('score-avg').textContent()).includes('8/10'));

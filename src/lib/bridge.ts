@@ -91,8 +91,22 @@ export const DEFAULT_HABITS: HabitSetting[] = [
   { id: 'tr-skincare', perWeek: 5 },
   { id: 'tr-sport', perWeek: 3 },
   { id: 'tr-lecture', perWeek: 3 },
-  { id: 'tr-meditation', perWeek: 2 },
 ];
+
+/**
+ * Une seule fois : retire Méditation des habitudes de la semaine (demande d'Anaïs, 26/11/2026).
+ * Le suivi « Méditation » et tout l'historique du journal restent intacts ; on peut la remettre avec le crayon.
+ */
+export async function dropMeditationHabit() {
+  const { db, setSetting } = await import('../db/db');
+  if (await db.meta.get('mig-habits-no-meditation')) return;
+  const r = await db.settings.get('habits');
+  if (r && !r.deleted && Array.isArray(r.value)) {
+    const kept = (r.value as unknown[]).filter((h) => (typeof h === 'string' ? h : (h as any)?.id) !== 'tr-meditation');
+    if (kept.length !== r.value.length) await setSetting('habits', kept);
+  }
+  await db.meta.put({ key: 'mig-habits-no-meditation', value: true });
+}
 export const MAX_HABITS = 5;
 /** Ce qu'on ne coche pas comme une réussite (états, écarts, cycle). */
 export const NOT_HABITS = new Set(['tr-pilule', 'tr-scroll', 'tr-craquage', 'tr-derive', 'tr-ex', 'tr-malade', 'tr-regles', 'tr-spm', 'tr-alcool', 'tr-match', 'tr-crush', 'tr-conge']);

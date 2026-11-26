@@ -192,6 +192,15 @@ describe('bilan du mois', () => {
     expect(a.completion).toBeCloseTo(2 / 6);
   });
 
+  it('un journal tout neuf (1 jour sur 1) ne parle pas de 100 % : « Jour 1 de ton journal »', () => {
+    const a = analyze(periodOf('month', '2026-11-20'), [L('2026-11-20', { mood: 4 })], trackers, [], [], '2026-11-20');
+    expect(a.elapsed).toBe(1);
+    const r = buildReview(a, []);
+    expect(r.coverage.partial).toBe(false);
+    expect(r.coverage.text).toContain('Jour 1 de ton journal');
+    expect(r.coverage.text).not.toContain('%');
+  });
+
   it('équilibre en part des jours renseignés, avec le repère habituel', () => {
     const a = run(periodOf('month', '2026-11-10'));
     const history = ['2026-10-10', '2026-09-10', '2026-08-10'].map((d) => run(periodOf('month', d)));
