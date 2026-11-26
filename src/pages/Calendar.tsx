@@ -64,7 +64,7 @@ export function CalendarPage() {
   return (
     <div className="space-y-5">
       <header className="anim-rise space-y-3">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="h-title text-4xl">{title}</h1>
           {mode !== 'inbox' && (
             <div className="flex items-center">

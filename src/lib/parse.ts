@@ -8,7 +8,9 @@ const DAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'sa
  * « demain », « aujourd'hui », « après-demain », un jour de la semaine, « 14h », « 14h30 », « 9:15 »,
  * et « ! » ou « urgent » pour une priorité essentielle. Fonctionne aussi avec la dictée vocale.
  */
-export function parseQuick(input: string, today: ISODate = todayISO()): { title: string; date?: ISODate; time?: HHmm; priority?: Priority } {
+const EVENT_WORDS = /\b(rdv|rendez[- ]vous|entretien|réunion|reunion|meeting|visio|dentiste|médecin|medecin|docteur|kiné|kine|gynéco|gyneco|ophtalmo|dermato|coiffeur|esthéticienne|dîner|diner|déjeuner|dejeuner|brunch|apéro|apero|anniversaire|cours|séance|seance|vol|train)\b/i;
+
+export function parseQuick(input: string, today: ISODate = todayISO()): { title: string; date?: ISODate; time?: HHmm; priority?: Priority; kind?: 'task' | 'event' } {
   let s = ` ${input.trim()} `;
   let date: ISODate | undefined;
   let time: HHmm | undefined;
@@ -38,5 +40,7 @@ export function parseQuick(input: string, today: ISODate = todayISO()): { title:
   }
   if (take(/\s(!+|urgent)\s/i)) priority = 'must';
   const title = s.replace(/\s+/g, ' ').trim();
-  return { title: title ? title.charAt(0).toUpperCase() + title.slice(1) : input.trim(), date, time, priority };
+  // Un rendez-vous reconnu (« entretien », « dentiste », « rdv »…) avec une heure devient un rendez-vous fixe
+  const kind = time && EVENT_WORDS.test(input) ? 'event' : undefined;
+  return { title: title ? title.charAt(0).toUpperCase() + title.slice(1) : input.trim(), date, time, priority, kind };
 }

@@ -18,17 +18,16 @@ for (const [name, dev] of [['iphone', devices['iPhone 13']], ['mac', { viewport:
     await page.waitForTimeout(300);
     const n = await page.locator('main button:visible').count();
     for (let i = 0; i < n; i++) {
-      await page.goto(BASE + '#/' + route);
-      await page.waitForTimeout(150);
+      if (!page.url().endsWith('#/' + route)) { await page.goto(BASE + '#/' + route); await page.waitForTimeout(150); }
       const b = page.locator('main button:visible').nth(i);
       const label = ((await b.getAttribute('aria-label').catch(() => '')) || (await b.textContent().catch(() => '')) || '').trim();
       if (/Supprimer toutes|Se déconnecter|Changer de configuration/.test(label)) continue;
       try {
-        await b.click({ timeout: 1500 });
+        await b.click({ timeout: 800 });
         clicked++;
       } catch {}
-      await page.waitForTimeout(120);
-      await page.keyboard.press('Escape');
+      await page.waitForTimeout(80);
+      if (await page.locator('[role=dialog]').count()) await page.keyboard.press('Escape');
     }
   }
   await ctx.close();

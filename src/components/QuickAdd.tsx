@@ -29,7 +29,7 @@ export function QuickAdd() {
   const submit = async () => {
     if (!p?.title) return;
     await create<Task>('tasks', {
-      kind: 'task',
+      kind: p.kind || 'task',
       title: p.title,
       date: p.date || today,
       time: p.time,
@@ -37,7 +37,7 @@ export function QuickAdd() {
       subtasks: [],
       status: 'todo',
     } as any);
-    toast(`Ajoutée · ${relativeDay(p.date || today, today)}${p.time ? ' à ' + p.time : ''}`);
+    toast(`${p.kind === 'event' ? 'Rendez-vous ajouté' : 'Ajoutée'} · ${relativeDay(p.date || today, today)}${p.time ? ' à ' + p.time : ''}`);
     closeEditor();
   };
   return (
@@ -61,7 +61,7 @@ export function QuickAdd() {
         />
         <p className="mt-1.5 text-xs text-soft">
           {p && (p.date || p.time || p.priority)
-            ? `Compris : ${p.date ? relativeDay(p.date, today) : "aujourd'hui"}${p.time ? ' à ' + p.time : ''}${p.priority ? ' · essentiel' : ''} — Entrée pour valider`
+            ? `Compris : ${p.kind === 'event' ? 'rendez-vous ' : ''}${p.date ? relativeDay(p.date, today).toLowerCase() : "aujourd'hui"}${p.time ? ' à ' + p.time : ''}${p.priority ? ' · essentiel' : ''} — Entrée pour valider`
             : 'Astuce : utilise le micro du clavier pour dicter. « ! » = essentiel.'}
         </p>
       </form>

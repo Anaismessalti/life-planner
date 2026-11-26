@@ -42,7 +42,7 @@ export function SettingsPage() {
       </header>
 
       <div className="grid gap-7 lg:grid-cols-2">
-        <div className="space-y-7">
+        <div className="min-w-0 space-y-7">
           <Card icon={<User size={18} />} title="Profil">
             <Field label="Ton prénom (pour la salutation)">
               <input className="input" value={n} onChange={(e) => setN(e.target.value)} onBlur={() => setSetting('userName', n.trim())} placeholder="Anaïs" />
@@ -69,7 +69,7 @@ export function SettingsPage() {
           <ListManager table="budgetCategories" title="Catégories de dépenses" withKind />
         </div>
 
-        <div className="space-y-7">
+        <div className="min-w-0 space-y-7">
           <SyncCard />
           <NotificationsCard />
           <BackupCard />

@@ -1,4 +1,4 @@
-import { CalendarClock, Settings as Cog, Sparkles } from 'lucide-react';
+import { CalendarClock, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { PaymentsList, Planning, PriorityBoard, TaskList, type DayCtx } from '../components/DayViews';
 import { Ring, Section, Segmented } from '../components/ui';
@@ -70,9 +70,6 @@ export function TodayPage() {
           <h1 className="h-title mt-1 text-4xl md:text-5xl">{greeting(name)}</h1>
           <p className="mt-1.5 font-serif text-lg italic text-soft">{quote}</p>
         </div>
-        <button className="icon-btn md:hidden" onClick={() => navigate('settings')} aria-label="Paramètres">
-          <Cog size={20} />
-        </button>
       </header>
 
       <div className="anim-rise card relative flex items-center gap-4 overflow-hidden p-4">

@@ -105,20 +105,25 @@ export function App() {
         </div>
       </main>
 
-      {/* Barre inférieure : iPhone */}
+      {/* Barre inférieure : iPhone (3 rubriques, le bouton +, 3 rubriques : parfaitement centré) */}
       <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line/70 bg-cream/85 backdrop-blur-xl md:hidden">
-        <div className="mx-auto flex max-w-md items-stretch justify-around px-1">
-          {NAV.filter((n) => n.route !== 'settings').map(({ route: r, label, icon: I }, i) => (
-            <FragmentWithFab key={r} withFab={i === 2}>
-              <button
-                onClick={() => navigate(r)}
-                className={`flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-2 text-[10.5px] font-medium ${route === r ? 'text-rasp' : 'text-plum/60'}`}
-                aria-current={route === r ? 'page' : undefined}
-              >
-                <I size={22} strokeWidth={route === r ? 2 : 1.6} />
-                {label}
-              </button>
-            </FragmentWithFab>
+        <div className="mx-auto grid max-w-md grid-cols-7 items-stretch">
+          {NAV.slice(0, 3).map((n) => (
+            <TabButton key={n.route} {...n} active={route === n.route} />
+          ))}
+          <div className="flex justify-center">
+            <button
+              onClick={() => openEditor({ type: 'quick' })}
+              className="-mt-5 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lift transition active:scale-90"
+              style={{ background: 'linear-gradient(135deg, rgb(var(--c-rasp)), rgb(var(--c-plum)))' }}
+              aria-label="Ajouter"
+              data-testid="fab"
+            >
+              <Plus size={28} />
+            </button>
+          </div>
+          {NAV.slice(3).map((n) => (
+            <TabButton key={n.route} {...n} active={route === n.route} />
           ))}
         </div>
       </nav>
@@ -129,23 +134,15 @@ export function App() {
   );
 }
 
-function FragmentWithFab({ withFab, children }: { withFab: boolean; children: React.ReactNode }) {
+function TabButton({ route, label, icon: I, active }: { route: Route; label: string; icon: LucideIcon; active: boolean }) {
   return (
-    <>
-      {withFab && (
-        <div className="flex flex-1 justify-center">
-          <button
-            onClick={() => openEditor({ type: 'quick' })}
-            className="-mt-5 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lift transition active:scale-90"
-            style={{ background: 'linear-gradient(135deg, rgb(var(--c-rasp)), rgb(var(--c-plum)))' }}
-            aria-label="Ajouter"
-            data-testid="fab"
-          >
-            <Plus size={28} />
-          </button>
-        </div>
-      )}
-      {children}
-    </>
+    <button
+      onClick={() => navigate(route)}
+      className={`flex min-w-0 flex-col items-center gap-0.5 pb-1.5 pt-2 text-[9.5px] font-medium tracking-tight ${active ? 'text-rasp' : 'text-plum/60'}`}
+      aria-current={active ? 'page' : undefined}
+    >
+      <I size={21} strokeWidth={active ? 2 : 1.6} />
+      <span className="max-w-full truncate">{label}</span>
+    </button>
   );
 }

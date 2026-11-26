@@ -30,6 +30,7 @@
 }
 
 html, body, #root { height: 100%; }
+html, body { overflow-x: hidden; }
 body {
   @apply bg-cream text-ink font-sans antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -59,7 +60,7 @@ input, textarea, select { font-size: 16px; }
   .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-sm text-ink/80 transition active:scale-95; }
   .chip-on { @apply border-transparent bg-rasp text-white; }
   .seg { @apply flex rounded-full bg-blush/70 p-1; }
-  .seg > button { @apply flex-1 rounded-full px-3 py-1.5 text-sm font-medium text-plum/80 transition; }
+  .seg > button { @apply min-w-0 flex-1 truncate whitespace-nowrap rounded-full px-1.5 py-1.5 text-sm font-medium text-plum/80 transition sm:px-3; }
   .seg > button[aria-pressed='true'] { @apply bg-card text-plum shadow-soft; }
 }
 

@@ -57,6 +57,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
         date: data.date ?? p.date,
         time: data.time || p.time,
         priority: p.priority || data.priority,
+        kind: p.kind || data.kind,
       };
       // Les mots « demain », « 14h »… l'emportent sur la date par défaut
       if (p.date) data.date = p.date;
