@@ -3,3 +3,5 @@ dist
 dist-preview
 *.log
 .DS_Store
+e2e/shots/debug-*
+e2e/demo-backup.json

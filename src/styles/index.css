@@ -12,6 +12,7 @@
   --c-soft: 122 92 113;   /* texte secondaire, contraste AA sur blanc rosé */
   --c-card: 255 255 255;
   --c-line: 240 222 233;
+  --c-shadow: 129 38 93;
   color-scheme: light;
 }
 .dark {
@@ -24,6 +25,7 @@
   --c-soft: 196 168 188;
   --c-card: 40 27 37;
   --c-line: 70 48 64;
+  --c-shadow: 0 0 0;
   color-scheme: dark;
 }
 

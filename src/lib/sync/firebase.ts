@@ -48,6 +48,8 @@ export function parseConfig(text: string): FirebaseConfig | null {
   return obj as FirebaseConfig;
 }
 
+export const isReady = () => !!app;
+
 export async function initFirebase(cfg: FirebaseConfig) {
   for (const a of getApps()) await deleteApp(a);
   app = initializeApp(cfg);

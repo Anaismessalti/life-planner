@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: process.env.BASE_PATH || './',
     define: { __APP_VERSION__: JSON.stringify(process.env.npm_package_version || '1.0.0') },
+    resolve: single ? { alias: { 'virtual:pwa-register/react': '/src/stubs/pwa-register.ts' } } : undefined,
     build: single ? { outDir: 'dist-preview', assetsInlineLimit: 100000000 } : { outDir: 'dist' },
     plugins: [
       react(),
@@ -34,7 +35,8 @@ export default defineConfig(({ mode }) => {
               ],
             },
             workbox: {
-              globPatterns: ['**/*.{js,css,html,png,svg,woff2,woff}'],
+              globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+              globIgnores: ['**/*cyrillic*', '**/*vietnamese*', '**/*greek*'],
               navigateFallback: 'index.html',
               cleanupOutdatedCaches: true,
               maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,

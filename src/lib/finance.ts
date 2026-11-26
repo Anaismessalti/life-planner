@@ -158,3 +158,12 @@ export const INCOME_TYPE_LABEL: Record<Income['type'], string> = {
   complementaire: 'Revenu complémentaire',
   autre: 'Autre',
 };
+
+import { db as _db, upsert as _upsert } from '../db/db';
+/** Confirme (ou annule la confirmation) d'un prélèvement / revenu précis. */
+export async function togglePayment(o: Occurrence) {
+  const id = paymentId(o.refId, o.date);
+  const cur = await _db.payments.get(id);
+  const paid = !(cur && !cur.deleted && cur.status === 'paid');
+  await _upsert<PaymentStatus>('payments', { id, refId: o.refId, refType: o.refType, date: o.date, status: paid ? 'paid' : 'pending' });
+}

@@ -1,0 +1,187 @@
+// Tests fonctionnels de bout en bout (navigateur réel, écran iPhone).
+import { chromium, devices } from 'playwright';
+const BASE = process.env.BASE || 'http://localhost:4173/';
+const results = [];
+const errors = [];
+const ok = (name, cond, extra = '') => { results.push({ name, pass: !!cond, extra }); console.log(`${cond ? '✅' : '❌'} ${name} ${extra}`); };
+
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'fr-FR', timezoneId: 'Europe/Paris' });
+const page = await ctx.newPage();
+page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text()}`));
+
+// Horloge contrôlée : mercredi 25 novembre 2026, 9 h
+await page.clock.install({ time: new Date('2026-11-25T09:00:00+01:00') });
+await page.goto(BASE);
+await page.waitForSelector('text=Ma journée');
+ok('Accueil chargé avec salutation', await page.locator('h1').first().textContent().then((t) => /Bonjour/.test(t)));
+ok("Date du jour affichée", await page.locator('text=Mercredi 25 novembre').count());
+
+// Ajout rapide en langage naturel
+await page.getByTestId('fab').click();
+await page.getByTestId('quick-input').fill('Dentiste demain 14h30');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(300);
+// Tâche du jour + cochage
+await page.getByTestId('fab').click();
+await page.getByTestId('quick-input').fill('Appeler la banque !');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(300);
+ok('Tâche du jour visible', await page.locator('[data-testid=task-item]:has-text("Appeler la banque")').count());
+ok('Priorité « ! » comprise', await page.locator('[data-testid=task-item]:has-text("Appeler la banque") >> text=Essentiel').count());
+await page.locator('[data-testid=task-item]:has-text("Appeler la banque") button[aria-label="Marquer comme faite"]').click();
+await page.waitForTimeout(300);
+ok('Progression 100 % après cochage', await page.locator('text=Tout est fait').count());
+
+// Calendrier : la tâche de demain dans les 3 vues
+await page.locator('nav button:visible', { hasText: 'Calendrier' }).first().click();
+await page.waitForTimeout(200);
+await page.getByTestId('month-day-2026-11-26').click();
+ok('Vue mois : tâche de demain', await page.locator('[data-testid=task-item]:has-text("Dentiste")').count());
+await page.getByRole('button', { name: 'Semaine', exact: true }).click();
+ok('Vue semaine : tâche de demain', await page.locator('[data-testid=week-day]:has-text("Dentiste")').count());
+await page.locator('[data-testid=week-day]').nth(3).locator('button').first().click(); // jeudi
+await page.waitForTimeout(200);
+ok('Vue jour (planning) : à 14:30', await page.locator('[data-testid=planning-item]:has-text("Dentiste") >> text=14:30').count());
+await page.screenshot({ path: 'e2e/shots/iphone-calendrier-jour.png' });
+
+// Tâche cochée mise à jour partout : visible cochée dans le mois
+await page.getByRole('button', { name: 'Mois', exact: true }).click();
+await page.getByTestId('month-day-2026-11-25').click();
+ok('Tâche cochée apparaît terminée dans le calendrier', await page.locator('[data-testid=task-item]:has-text("Appeler la banque") button[aria-label="Marquer comme non faite"]').count());
+
+// Objectif du mois sans date (décembre)
+await page.getByRole('button', { name: 'Suivant' }).click();
+await page.click('text=+ Objectif');
+await page.getByTestId('task-title').fill('Préparer les cadeaux de Noël');
+await page.getByTestId('save-task').click();
+await page.waitForTimeout(300);
+ok('Objectif de décembre sans date affiché', await page.locator('section:has-text("Mes objectifs de décembre") >> text=Préparer les cadeaux').count());
+const inDays = await page.locator('[data-testid^=month-day-]').evaluateAll((els) => els.some((e) => e.querySelector('span span')));
+ok("L'objectif n'est attribué à aucun jour", !inDays);
+await page.screenshot({ path: 'e2e/shots/iphone-calendrier-mois.png', fullPage: true });
+
+// Tâche non terminée : report automatique le lendemain
+await page.locator('nav button:visible', { hasText: 'Aujourd\'hui' }).first().click();
+await page.getByTestId('fab').click();
+await page.getByTestId('quick-input').fill('Envoyer le dossier');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(300);
+await page.clock.setFixedTime(new Date('2026-11-27T08:00:00+01:00'));
+await page.reload();
+await page.waitForSelector('text=Ma journée');
+ok('Report automatique après 2 jours sans ouvrir', await page.locator('section:has-text("Reportées") >> text=Envoyer le dossier').count());
+ok('Tâche terminée non reportée', !(await page.locator('[data-testid=task-item]:has-text("Appeler la banque")').count()));
+await page.locator('[data-testid=task-item]:has-text("Envoyer le dossier")').click();
+ok('Date initiale conservée', await page.locator('text=Prévue initialement le 25 novembre').count());
+await page.keyboard.press('Escape');
+
+// Budget
+await page.locator('nav button:visible', { hasText: 'Budget' }).first().click();
+await page.click('text=+ Revenu');
+await page.locator('input[inputmode=decimal]').first().fill('2500');
+await page.click('text=Enregistrer');
+await page.waitForTimeout(200);
+await page.getByTestId('fab').click();
+await page.getByTestId('quick-Dépense').click();
+await page.locator('input[aria-label=Montant]').fill('42,50');
+await page.locator('[role=dialog] button:has-text("Restaurants")').click();
+await page.click('text=Enregistrer');
+await page.waitForTimeout(200);
+await page.getByRole('button', { name: 'Fixes', exact: true }).click();
+await page.click('button:has-text("Dépense fixe")');
+await page.locator('input[placeholder="Ex : Loyer"]').fill('Loyer');
+await page.locator('input[inputmode=decimal]').fill('850');
+await page.locator('input[type=date]').first().fill('2026-11-05');
+await page.click('text=Enregistrer');
+await page.waitForTimeout(200);
+await page.getByRole('button', { name: 'Aperçu', exact: true }).click();
+const rem = await page.getByTestId('remaining').textContent();
+ok('Reste à vivre = 2500 − 850 − 42,50', rem.replace(/\s/g, '').includes('1607,50'), rem);
+await page.screenshot({ path: 'e2e/shots/iphone-budget.png', fullPage: true });
+await page.getByRole('button', { name: 'Mois suivant' }).click();
+await page.getByRole('button', { name: 'Fixes', exact: true }).click();
+await page.waitForTimeout(200);
+await page.screenshot({ path: 'e2e/shots/debug-fixes.png' });
+ok('Loyer récurrent en décembre (5 déc.)', await page.locator('main >> text=Loyer').count(), await page.locator('main h1').first().textContent());
+// prélèvement dans le calendrier
+await page.locator('nav button:visible', { hasText: 'Calendrier' }).first().click();
+await page.getByRole('button', { name: 'Suivant' }).click();
+await page.getByTestId('month-day-2026-12-05').click();
+ok('Prélèvement visible dans le calendrier le 5 déc.', await page.locator('text=Loyer').count() && await page.locator('text=non confirmé').count());
+
+// Notes et liens
+await page.locator('nav button:visible', { hasText: 'Notes' }).first().click();
+await page.getByTestId('fab').click();
+await page.getByTestId('quick-Lien').click();
+await page.getByTestId('note-url').fill('https://www.tiktok.com/@cuisine/video/123');
+await page.getByTestId('save-note').click();
+await page.waitForTimeout(300);
+ok('Lien TikTok enregistré avec titre auto', await page.locator('[data-testid=note-card]:has-text("TikTok de @cuisine")').count());
+await page.getByTestId('fab').click();
+await page.getByTestId('quick-Note').click();
+await page.getByTestId('note-title').fill('Recette tiramisu');
+await page.locator('textarea[aria-label=Texte]').fill('Mascarpone, café, biscuits');
+await page.locator('[role=dialog] button:has-text("Recettes")').click();
+await page.getByTestId('save-note').click();
+await page.waitForTimeout(300);
+await page.fill('input[type=search]', 'mascarpone');
+ok('Recherche dans les notes', (await page.locator('[data-testid=note-card]').count()) === 1);
+await page.fill('input[type=search]', '');
+await page.screenshot({ path: 'e2e/shots/iphone-notes.png', fullPage: true });
+
+// Projet
+await page.locator('nav button:visible', { hasText: 'Projets' }).first().click();
+await page.locator('main button:has-text("Projet")').click();
+await page.locator('input[aria-label="Titre du projet"]').fill('Déménagement');
+await page.locator('input[type=month]').fill('2026-12');
+await page.click('text=Créer');
+await page.waitForTimeout(300);
+await page.fill('input[placeholder="Nouvelle étape"]', 'Trouver un appartement');
+await page.keyboard.press('Enter');
+await page.click('text=+ Tâche');
+await page.getByTestId('task-title').fill('Résilier la box');
+await page.locator('input[aria-label=Date]').fill('2026-11-27');
+await page.getByTestId('save-task').click();
+await page.waitForTimeout(300);
+ok('Tâche de projet visible', await page.locator('[data-testid=task-item]:has-text("Résilier la box")').count());
+await page.locator('nav button:visible', { hasText: 'Aujourd\'hui' }).first().click();
+ok('Tâche de projet datée dans Aujourd\'hui', await page.locator('[data-testid=task-item]:has-text("Résilier la box")').count());
+await page.locator('[data-testid=task-item]:has-text("Résilier la box") button[aria-label="Marquer comme faite"]').click();
+await page.locator('nav button:visible', { hasText: 'Projets' }).first().click();
+await page.waitForTimeout(300);
+await page.screenshot({ path: 'e2e/shots/debug-projects.png' });
+ok('Terminée depuis le planning = progression projet 50 %', await page.locator('[data-testid=project-card]:has-text("50%")').count());
+await page.locator('nav button:visible', { hasText: 'Calendrier' }).first().click();
+ok('Projet de décembre dans les objectifs du mois', await page.getByRole('button', { name: 'Suivant' }).click().then(() => page.locator('text=Déménagement').count()));
+
+// Persistance après fermeture
+await page.close();
+const page2 = await ctx.newPage();
+page2.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+await page2.clock.install({ time: new Date('2026-11-27T08:05:00+01:00') });
+await page2.goto(BASE + '#/notes');
+await page2.waitForSelector('[data-testid=note-card]');
+ok('Données conservées après fermeture', (await page2.locator('[data-testid=note-card]').count()) === 2);
+
+// Hors ligne
+await page2.waitForTimeout(1500);
+await ctx.setOffline(true);
+await page2.reload();
+await page2.waitForSelector('text=Notes et inspirations', { timeout: 8000 }).catch(() => {});
+ok('Application chargée hors ligne', await page2.locator('text=Notes et inspirations').count());
+await page2.locator('nav button:visible', { hasText: 'Aujourd\'hui' }).first().click();
+await page2.getByTestId('fab').click();
+await page2.getByTestId('quick-input').fill('Tâche hors ligne');
+await page2.keyboard.press('Enter');
+await page2.waitForTimeout(300);
+ok('Ajout de tâche hors ligne', await page2.locator('text=Tâche hors ligne').count());
+await ctx.setOffline(false);
+
+await browser.close();
+const fails = results.filter((r) => !r.pass);
+console.log(`\n${results.length - fails.length}/${results.length} vérifications réussies`);
+const relevant = errors.filter((e) => !/favicon|Failed to load resource.*(404|net::ERR_INTERNET_DISCONNECTED)/.test(e));
+console.log('Erreurs JS :', relevant.length ? relevant : 'aucune');
+process.exit(fails.length || relevant.length ? 1 : 0);

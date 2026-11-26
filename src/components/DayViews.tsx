@@ -1,0 +1,202 @@
+import { Inbox, Receipt } from 'lucide-react';
+import { useMemo } from 'react';
+import type { Category, Priority, Project, Task } from '../db/types';
+import { timeToMin } from '../lib/dates';
+import { eur, type Occurrence } from '../lib/finance';
+import { PRIORITY_LABEL, materialize, moveTask, type TaskView } from '../lib/tasks';
+import { update } from '../db/db';
+import { openEditor } from '../lib/ui-store';
+import { TaskItem } from './TaskItem';
+import { Empty, toast } from './ui';
+
+export interface DayCtx {
+  today: string;
+  cats: Map<string, Category>;
+  projects: Map<string, Project>;
+}
+
+export function TaskList({ tasks, ctx, showDate, empty }: { tasks: TaskView[]; ctx: DayCtx; showDate?: boolean; empty?: string }) {
+  if (!tasks.length) return <Empty icon={<Inbox size={20} />}>{empty || 'Rien de prévu ici'}</Empty>;
+  return (
+    <div className="space-y-2">
+      {tasks.map((t) => (
+        <TaskItem
+          key={t.id}
+          t={t}
+          today={ctx.today}
+          cat={t.categoryId ? ctx.cats.get(t.categoryId) : undefined}
+          projectName={t.projectId ? ctx.projects.get(t.projectId)?.title : undefined}
+          showDate={showDate}
+        />
+      ))}
+    </div>
+  );
+}
+
+const HOUR = 56;
+
+/** Planning vertical heure par heure. */
+export function Planning({ tasks, ctx, date }: { tasks: TaskView[]; ctx: DayCtx; date: string }) {
+  const timed = tasks.filter((t) => t.time);
+  const untimed = tasks.filter((t) => !t.time);
+  const startH = Math.min(7, ...timed.map((t) => Math.floor(timeToMin(t.time!) / 60)));
+  const endH = Math.max(22, ...timed.map((t) => Math.ceil((timeToMin(t.time!) + (t.duration || 30)) / 60)));
+  const hours = Array.from({ length: endH - startH + 1 }, (_, i) => startH + i);
+
+  // Répartition en colonnes quand des éléments se chevauchent
+  const laid = useMemo(() => {
+    const items = timed
+      .map((t) => ({ t, s: timeToMin(t.time!), e: timeToMin(t.time!) + Math.max(t.duration || 30, 25) }))
+      .sort((a, b) => a.s - b.s);
+    const lanes: number[] = [];
+    const out = items.map((it) => {
+      let lane = lanes.findIndex((end) => end <= it.s);
+      if (lane === -1) {
+        lane = lanes.length;
+        lanes.push(it.e);
+      } else lanes[lane] = it.e;
+      return { ...it, lane };
+    });
+    return { out, n: Math.max(1, lanes.length) };
+  }, [timed]);
+
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const showNow = date === ctx.today && nowMin >= startH * 60 && nowMin <= endH * 60;
+
+  return (
+    <div className="space-y-3">
+      {untimed.length > 0 && (
+        <div className="space-y-2">
+          <div className="label">Sans horaire</div>
+          <TaskList tasks={untimed} ctx={ctx} />
+        </div>
+      )}
+      <div className="card relative overflow-hidden p-0">
+        <div className="relative" style={{ height: hours.length * HOUR }}>
+          {hours.map((h, i) => (
+            <button
+              key={h}
+              className="absolute inset-x-0 flex border-t border-line/70 text-left hover:bg-blush/30"
+              style={{ top: i * HOUR, height: HOUR }}
+              onClick={() => openEditor({ type: 'task', defaults: { date, time: `${String(h).padStart(2, '0')}:00` } })}
+              aria-label={`Ajouter à ${h} h`}
+            >
+              <span className="w-14 shrink-0 pr-2 pt-1 text-right text-[11px] text-soft">{h}:00</span>
+            </button>
+          ))}
+          {showNow && (
+            <div className="pointer-events-none absolute left-12 right-0 z-10 flex items-center" style={{ top: ((nowMin - startH * 60) / 60) * HOUR }}>
+              <span className="h-2.5 w-2.5 rounded-full bg-rasp" />
+              <span className="h-[2px] flex-1 bg-rasp/70" />
+            </div>
+          )}
+          {laid.out.map(({ t, s, e, lane }) => {
+            const cat = t.categoryId ? ctx.cats.get(t.categoryId) : undefined;
+            const color = cat?.color || '#A83278';
+            const w = `calc((100% - 3.75rem) / ${laid.n})`;
+            return (
+              <button
+                key={t.id}
+                onClick={() => openEditor({ type: 'task', task: t })}
+                className={`absolute overflow-hidden rounded-xl px-2.5 py-1.5 text-left text-xs shadow-soft transition hover:brightness-95 ${
+                  t.status === 'done' ? 'opacity-50 line-through' : ''
+                }`}
+                style={{
+                  top: ((s - startH * 60) / 60) * HOUR + 1,
+                  height: Math.max(((e - s) / 60) * HOUR - 2, 24),
+                  left: `calc(3.5rem + ${lane} * ${w})`,
+                  width: `calc(${w} - 4px)`,
+                  background: `${color}1f`,
+                  borderLeft: `3px solid ${color}`,
+                }}
+                data-testid="planning-item"
+              >
+                <div className="truncate font-semibold text-ink">{t.title}</div>
+                <div className="truncate text-soft">
+                  {t.time}
+                  {t.kind === 'event' ? ' · rendez-vous' : ''}
+                  {t.location ? ` · ${t.location}` : ''}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function PriorityBoard({ tasks, ctx }: { tasks: TaskView[]; ctx: DayCtx }) {
+  const list = tasks.filter((t) => t.kind === 'task');
+  const levels: Priority[] = ['must', 'should', 'could'];
+  const tint: Record<Priority, string> = {
+    must: 'from-rasp/15',
+    should: 'from-mauve/25',
+    could: 'from-blush',
+  };
+  return (
+    <div className="grid gap-3 lg:grid-cols-3">
+      {levels.map((p) => {
+        const items = list.filter((t) => t.priority === p);
+        return (
+          <div
+            key={p}
+            className={`rounded-2xl bg-gradient-to-b ${tint[p]} to-transparent p-3`}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={async (e) => {
+              const raw = e.dataTransfer.getData('text/task');
+              if (!raw) return;
+              const t = JSON.parse(raw) as TaskView;
+              if (t.virtual) await materialize(t, { priority: p });
+              else await update<Task>('tasks', t.id, { priority: p });
+            }}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <h4 className="font-serif text-lg font-semibold text-plum">{PRIORITY_LABEL[p]}</h4>
+              <span className="text-xs text-soft">
+                {items.filter((t) => t.status === 'done').length}/{items.length}
+              </span>
+            </div>
+            <TaskList tasks={items} ctx={ctx} empty="Aucune tâche" />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function PaymentsList({ items, onToggle }: { items: Occurrence[]; onToggle: (o: Occurrence) => void }) {
+  if (!items.length) return null;
+  return (
+    <div className="space-y-2">
+      {items.map((o) => (
+        <div key={o.refId + o.date} className="flex items-center gap-3 rounded-2xl border border-line/70 bg-card px-3.5 py-2.5 shadow-soft">
+          <span className={`flex h-8 w-8 items-center justify-center rounded-full ${o.refType === 'income' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-blush text-plum'}`}>
+            <Receipt size={15} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">{o.label}</div>
+            <div className="text-xs text-soft">
+              {o.refType === 'income' ? 'Revenu' : 'Prélèvement'} · {o.confirmed !== undefined ? (o.refType === 'income' ? 'reçu' : 'payé') : 'non confirmé'}
+            </div>
+          </div>
+          <span className={`text-sm font-semibold ${o.refType === 'income' ? 'text-emerald-700 dark:text-emerald-300' : 'text-plum'}`}>
+            {o.refType === 'income' ? '+' : '−'}
+            {eur(o.confirmed ?? o.planned)}
+          </span>
+          <button className={`chip text-xs ${o.confirmed !== undefined ? 'chip-on' : ''}`} onClick={() => onToggle(o)}>
+            {o.confirmed !== undefined ? '✓' : 'Confirmer'}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Raccourcis de report rapide (utile sur iPhone où le glisser-déposer n'est pas disponible). */
+export async function quickMove(t: TaskView, date: string | undefined, label: string) {
+  await moveTask(t, date);
+  toast(label, { label: 'Annuler', run: () => moveTask({ ...t, virtual: false }, t.date) });
+}
+

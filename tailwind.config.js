@@ -21,8 +21,8 @@ export default {
       },
       borderRadius: { xl2: '1.25rem' },
       boxShadow: {
-        soft: '0 2px 12px -2px rgb(var(--c-plum) / 0.10), 0 1px 3px rgb(var(--c-plum) / 0.06)',
-        lift: '0 10px 30px -8px rgb(var(--c-plum) / 0.30)',
+        soft: '0 2px 12px -2px rgb(var(--c-shadow) / 0.10), 0 1px 3px rgb(var(--c-shadow) / 0.06)',
+        lift: '0 10px 30px -8px rgb(var(--c-shadow) / 0.30)',
       },
     },
   },
