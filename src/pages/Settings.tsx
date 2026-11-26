@@ -392,6 +392,19 @@ function SyncCard() {
             Facultatif. Sans synchronisation, tout fonctionne sur cet appareil (pense aux sauvegardes). Pour retrouver tes données sur iPhone, iPad et Mac, crée un projet Firebase gratuit (guide
             pas à pas fourni) puis colle sa configuration ici.
           </p>
+          <button
+            className="btn-primary w-full"
+            onClick={async () => {
+              const { MY_FIREBASE } = await import('../lib/sync/defaultConfig');
+              setErr('');
+              await setMeta('firebaseConfig', MY_FIREBASE);
+              await initSync();
+            }}
+            data-testid="use-my-firebase"
+          >
+            Utiliser mon projet Firebase (life-planner)
+          </button>
+          <p className="text-center text-[11px] text-soft">ou colle une autre configuration :</p>
           <textarea className="input min-h-[110px] font-mono text-xs" placeholder={'const firebaseConfig = {\n  apiKey: "…",\n  authDomain: "…",\n  projectId: "…",\n  …\n};'} value={cfgText} onChange={(e) => setCfgText(e.target.value)} />
           <button className="btn-primary" onClick={saveCfg}>
             Enregistrer la configuration

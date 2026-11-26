@@ -66,6 +66,9 @@ await sync(A.page);
 for (const [n, d] of [['iPhone', A], ['Mac', B]]) {
   await d.page.goto(BASE + '#/today');
   await d.page.waitForTimeout(400);
+  // Les tâches faites sont repliées sous « Voir ce qui est fait ou annulé »
+  await d.page.locator('button:has-text("Voir ce qui est fait")').first().click().catch(() => {});
+  await d.page.waitForTimeout(200);
   ok(`${n} : titre modifié (iPhone) ET coche (Mac) conservés`, await d.page.locator('[data-testid=task-item]:has-text("Acheter des pivoines") button[aria-label="Marquer comme non faite"]').count());
   ok(`${n} : tâche créée hors ligne présente`, await d.page.locator('[data-testid=task-item]:has-text("Créée hors ligne sur le Mac")').count());
 }

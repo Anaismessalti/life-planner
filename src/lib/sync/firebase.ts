@@ -56,8 +56,10 @@ export function parseConfig(text: string): FirebaseConfig | null {
   let r: RegExpExecArray | null;
   while ((r = re.exec(m[0]))) obj[r[1]] = r[2];
   for (const k of Object.keys(obj)) obj[k] = obj[k].trim();
+  // Une clé ne contient que lettres, chiffres, « - » et « _ » : on retire tout caractère parasite.
+  if (obj.apiKey) obj.apiKey = obj.apiKey.replace(/\u00AD/g, '-').replace(/[^A-Za-z0-9_-]/g, '');
   if (!obj.apiKey || !obj.projectId || !obj.appId) return null;
-  if (!/^AIza[\w-]{30,}$/.test(obj.apiKey)) return null;
+  if (!obj.emulatorHost && !/^AIza[\w-]{30,}$/.test(obj.apiKey)) return null;
   if (!obj.authDomain) obj.authDomain = `${obj.projectId}.firebaseapp.com`;
   return obj as FirebaseConfig;
 }
