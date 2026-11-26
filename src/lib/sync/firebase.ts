@@ -86,6 +86,8 @@ const FR_ERRORS: Record<string, string> = {
 };
 export function frError(e: any): string {
   const code = e?.code || '';
+  if (code.startsWith('auth/api-key-not-valid'))
+    return 'La clé « apiKey » enregistrée ne correspond pas à ton projet Firebase. Clique sur « Changer de configuration » et recolle tout le bloc « firebaseConfig ».';
   return FR_ERRORS[code] || e?.message || String(e);
 }
 

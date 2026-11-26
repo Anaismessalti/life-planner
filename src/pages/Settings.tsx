@@ -396,7 +396,7 @@ function SyncCard() {
         </>
       ) : !user ? (
         <>
-          <p className="text-sm text-soft">Projet Firebase : {cfg.projectId}. Connecte-toi avec le même e-mail et mot de passe sur chaque appareil.</p>
+          <p className="text-sm text-soft">Projet Firebase : {cfg.projectId} · clé …{String(cfg.apiKey || '').slice(-4)}. Connecte-toi avec le même e-mail et mot de passe sur chaque appareil.</p>
           <input className="input" type="email" autoComplete="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
           <input className="input" type="password" autoComplete="current-password" placeholder="Mot de passe (6 caractères min.)" value={pwd} onChange={(e) => setPwd(e.target.value)} />
           <div className="flex flex-wrap gap-2">
