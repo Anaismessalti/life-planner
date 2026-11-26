@@ -41,6 +41,8 @@ let app: FirebaseApp | null = null;
 
 /** Accepte le bloc copié depuis la console Firebase (`const firebaseConfig = {...}`) ou du JSON. */
 export function parseConfig(text: string): FirebaseConfig | null {
+  // Guillemets typographiques (copier-coller depuis Notes, Messages…) ramenés à des guillemets simples.
+  text = text.replace(/[\u201C\u201D\u201E\u00AB\u00BB]/g, '"').replace(/[\u2018\u2019]/g, "'");
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) return null;
   const obj: Record<string, string> = {};
