@@ -1,12 +1,12 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ChevronLeft, ChevronRight, Settings as Cog, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, MapPin, Plus, Settings as Cog, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Progress, Section } from '../components/ui';
-import { db, upsert } from '../db/db';
-import type { DayLog, ISODate, Tracker } from '../db/types';
+import { create, db, upsert } from '../db/db';
+import type { Contact, DayLog, ISODate, Tracker } from '../db/types';
 import { WEEKDAYS_SHORT, addDays, addMonths, capitalize, fmt, fmtMonth, monthOf, monthStart, range, relativeDay, weekStart } from '../lib/dates';
 import { useToday } from '../lib/hooks';
-import { Icon } from '../lib/icons';
+import { COLORS, Icon } from '../lib/icons';
 import { GROUP_LABEL, MOODS, monthJournal, topDetails } from '../lib/journal';
 import { navigate, useRoute } from '../lib/ui-store';
 
@@ -19,6 +19,19 @@ export function useTrackers(): Tracker[] {
 export function useDayLogs(): DayLog[] {
   const all = useLiveQuery(() => db.daylogs.toArray(), [], EMPTY);
   return useMemo(() => all.filter((l) => !l.deleted), [all]);
+}
+
+export function useContacts(): Contact[] {
+  const all = useLiveQuery(() => db.contacts.orderBy('order').toArray(), [], EMPTY);
+  return useMemo(() => all.filter((c) => !c.deleted), [all]);
+}
+
+export async function addContact(name: string, kind: Contact['kind'], existing: Contact[]): Promise<Contact> {
+  const clean = name.trim().replace(/^./, (c) => c.toUpperCase());
+  const dup = existing.find((c) => c.kind === kind && c.name.toLowerCase() === clean.toLowerCase());
+  if (dup) return dup;
+  const order = Math.max(0, ...existing.map((c) => c.order)) + 1;
+  return create<Contact>('contacts', { name: clean, kind, icon: kind === 'place' ? 'martini' : 'users', color: COLORS[order % COLORS.length], order } as any);
 }
 
 export async function saveLog(date: ISODate, patch: Partial<DayLog>) {
@@ -57,6 +70,7 @@ export function JournalPage() {
   const [month, setMonth] = useState(monthOf(date));
   const [focus, setFocus] = useState<string | null>(null);
   const trackers = useTrackers();
+  const contacts = useContacts();
   const logs = useDayLogs();
   const log = logs.find((l) => l.id === date);
   const topRef = useRef<HTMLDivElement>(null);
@@ -75,12 +89,13 @@ export function JournalPage() {
       </header>
 
       <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <DayEditor date={date} setDate={setDate} today={today} log={log} trackers={trackers} />
+        <DayEditor date={date} setDate={setDate} today={today} log={log} trackers={trackers} contacts={contacts} />
         <MonthReview
           month={month}
           setMonth={setMonth}
           logs={logs}
           trackers={trackers}
+          contacts={contacts}
           focus={focus}
           setFocus={setFocus}
           selected={date}
@@ -95,7 +110,7 @@ export function JournalPage() {
   );
 }
 
-function DayEditor({ date, setDate, today, log, trackers }: { date: ISODate; setDate: (d: ISODate) => void; today: ISODate; log?: DayLog; trackers: Tracker[] }) {
+function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: ISODate; setDate: (d: ISODate) => void; today: ISODate; log?: DayLog; trackers: Tracker[]; contacts: Contact[] }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState(log?.text || '');
   const items = log?.items || [];
@@ -113,7 +128,8 @@ function DayEditor({ date, setDate, today, log, trackers }: { date: ISODate; set
       setEditing(t.id);
     } else setEditing(editing === t.id ? null : t.id);
   };
-  const setDetail = (id: string, detail: string) => saveLog(date, { items: items.map((i) => (i.trackerId === id ? { ...i, detail: detail || undefined } : i)) });
+  const patchItem = (id: string, p: Partial<DayLog['items'][number]>) => saveLog(date, { items: items.map((i) => (i.trackerId === id ? { ...i, ...p } : i)) });
+  const names = useMemo(() => new Map(contacts.map((c) => [c.id, c.name])), [contacts]);
   const removeItem = (id: string) => {
     saveLog(date, { items: items.filter((i) => i.trackerId !== id) });
     setEditing(null);
@@ -157,31 +173,23 @@ function DayEditor({ date, setDate, today, log, trackers }: { date: ISODate; set
                 >
                   <Icon name={t.icon} size={14} />
                   {t.name}
-                  {it?.detail && <span className="opacity-85">· {it.detail}</span>}
+                  {it && (it.people?.length || it.places?.length || it.detail) ? (
+                    <span className="max-w-[12rem] truncate opacity-90">
+                      · {[...(it.people || []), ...(it.places || [])].map((id) => names.get(id)).filter(Boolean).concat(it.detail ? [it.detail] : []).join(', ')}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
           </div>
           {editing && list.some((t) => t.id === editing) && items.some((i) => i.trackerId === editing) && (
-            <div className="anim-rise flex items-center gap-2 rounded-2xl bg-blush/50 p-2">
-              <input
-                autoFocus
-                className="input py-2"
-                placeholder="Avec qui ? Où ? (facultatif)"
-                defaultValue={items.find((i) => i.trackerId === editing)?.detail || ''}
-                onBlur={(e) => setDetail(editing, e.target.value.trim())}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    setDetail(editing, (e.target as HTMLInputElement).value.trim());
-                    setEditing(null);
-                  }
-                }}
-                data-testid="tracker-detail"
-              />
-              <button className="btn-soft shrink-0 px-3 py-2 text-xs" onClick={() => removeItem(editing)}>
-                <X size={14} /> Retirer
-              </button>
-            </div>
+            <WithWhom
+              item={items.find((i) => i.trackerId === editing)!}
+              contacts={contacts}
+              onChange={(p) => patchItem(editing, p)}
+              onRemove={() => removeItem(editing)}
+              onDone={() => setEditing(null)}
+            />
           )}
         </div>
       ))}
@@ -195,11 +203,123 @@ function DayEditor({ date, setDate, today, log, trackers }: { date: ISODate; set
   );
 }
 
+/** Sélection des personnes et des lieux par pastilles, avec ajout immédiat d'un nouveau nom. */
+function WithWhom({
+  item,
+  contacts,
+  onChange,
+  onRemove,
+  onDone,
+}: {
+  item: DayLog['items'][number];
+  contacts: Contact[];
+  onChange: (p: Partial<DayLog['items'][number]>) => void;
+  onRemove: () => void;
+  onDone: () => void;
+}) {
+  const [adding, setAdding] = useState<Contact['kind'] | null>(null);
+  const [name, setName] = useState('');
+  const busy = useRef(false);
+  const people = contacts.filter((c) => c.kind === 'person');
+  const places = contacts.filter((c) => c.kind === 'place');
+  const key = (k: Contact['kind']) => (k === 'person' ? 'people' : 'places') as 'people' | 'places';
+  const toggle = (c: Contact) => {
+    const cur = item[key(c.kind)] || [];
+    onChange({ [key(c.kind)]: cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id] });
+  };
+  const submit = async () => {
+    if (busy.current) return;
+    if (!name.trim() || !adding) return setAdding(null);
+    busy.current = true;
+    try {
+      const c = await addContact(name, adding, contacts);
+      const cur = item[key(adding)] || [];
+      if (!cur.includes(c.id)) onChange({ [key(adding)]: [...cur, c.id] });
+      setName('');
+      setAdding(null);
+    } finally {
+      busy.current = false;
+    }
+  };
+  const row = (kind: Contact['kind'], list: Contact[], label: string) => (
+    <div className="space-y-1.5">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-soft">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {list.map((c) => {
+          const on = (item[key(kind)] || []).includes(c.id);
+          return (
+            <button
+              key={c.id}
+              onClick={() => toggle(c)}
+              className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm transition active:scale-95 ${on ? 'bg-plum text-white shadow-soft' : 'bg-card text-ink/80'}`}
+              aria-pressed={on}
+              data-testid={`contact-${c.id}`}
+            >
+              {on && <Check size={13} strokeWidth={3} />}
+              {kind === 'place' && !on && <MapPin size={12} />}
+              {c.name}
+            </button>
+          );
+        })}
+        {adding === kind ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
+            }}
+            className="flex items-center gap-1"
+          >
+            <input
+              autoFocus
+              className="input w-36 py-1.5 text-sm"
+              placeholder={kind === 'person' ? 'Prénom' : 'Nom du bar, de la boîte…'}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={submit}
+              data-testid={`new-${kind}`}
+            />
+          </form>
+        ) : (
+          <button
+            onClick={() => setAdding(kind)}
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-mauve px-3 py-1.5 text-sm text-plum"
+            data-testid={`add-${kind}`}
+          >
+            <Plus size={13} /> {kind === 'person' ? 'Quelqu’un' : 'Un lieu'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+  return (
+    <div className="anim-rise space-y-3 rounded-2xl bg-blush/50 p-3">
+      {row('person', people, 'Avec qui ?')}
+      {row('place', places, 'Où ?')}
+      <input
+        className="input py-2 text-sm"
+        placeholder="Autre précision (facultatif)"
+        defaultValue={item.detail || ''}
+        onBlur={(e) => onChange({ detail: e.target.value.trim() || undefined })}
+        aria-label="Précision"
+      />
+      <div className="flex gap-2">
+        <button className="btn-soft px-3 py-1.5 text-xs" onClick={onRemove}>
+          <X size={14} /> Retirer l'activité
+        </button>
+        <button className="btn-primary ml-auto px-4 py-1.5 text-xs" onClick={onDone} data-testid="with-done">
+          OK
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MonthReview({
   month,
   setMonth,
   logs,
   trackers,
+  contacts,
   focus,
   setFocus,
   selected,
@@ -210,13 +330,14 @@ function MonthReview({
   setMonth: (m: string) => void;
   logs: DayLog[];
   trackers: Tracker[];
+  contacts: Contact[];
   focus: string | null;
   setFocus: (id: string | null) => void;
   selected: ISODate;
   onPick: (d: ISODate) => void;
   today: ISODate;
 }) {
-  const s = useMemo(() => monthJournal(logs, trackers, month), [logs, trackers, month]);
+  const s = useMemo(() => monthJournal(logs, trackers, month, contacts), [logs, trackers, month, contacts]);
   const byDate = useMemo(() => new Map(logs.map((l) => [l.date, l])), [logs]);
   const gridStart = weekStart(monthStart(month));
   const days = range(gridStart, addDays(gridStart, 41));
@@ -279,7 +400,7 @@ function MonthReview({
             const l = byDate.get(d);
             const m = l?.mood ? MOODS[l.mood - 1] : undefined;
             const out = monthOf(d) !== month;
-            const hit = focus && l?.items.some((i) => i.trackerId === focus);
+            const hit = focus && l?.items.some((i) => i.trackerId === focus || i.people?.includes(focus) || i.places?.includes(focus));
             const future = d > today;
             return (
               <button
@@ -313,6 +434,26 @@ function MonthReview({
           ))}
         </div>
       </div>
+
+      {s.perContact.length > 0 && (
+        <div className="card space-y-2 p-3">
+          <div className="label">Avec qui et où</div>
+          <div className="flex flex-wrap gap-1.5">
+            {s.perContact.map(({ contact: c, days: n }) => (
+              <button
+                key={c.id}
+                onClick={() => setFocus(focus === c.id ? null : c.id)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition ${focus === c.id ? 'bg-plum text-white' : 'bg-blush/70 text-plum'}`}
+                data-testid={`people-count-${c.id}`}
+              >
+                {c.kind === 'place' && <MapPin size={12} />}
+                {c.name}
+                <span className="font-semibold">{n}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <p className="text-xs text-soft">

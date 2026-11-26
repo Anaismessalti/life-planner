@@ -1,4 +1,4 @@
-import type { DayLog, ISOMonth, Tracker } from '../db/types';
+import type { Contact, DayLog, ISOMonth, Tracker } from '../db/types';
 import { monthEnd, monthStart } from './dates';
 
 export const MOODS = [
@@ -24,9 +24,11 @@ export interface MonthJournal {
   /** Jours avec au moins une activité du groupe. */
   perGroup: Record<Tracker['group'], number>;
   bestDays: string[];
+  /** Nombre de jours passés avec chaque personne / dans chaque lieu, du plus fréquent au moins fréquent. */
+  perContact: { contact: Contact; days: number }[];
 }
 
-export function monthJournal(logs: DayLog[], trackers: Tracker[], month: ISOMonth): MonthJournal {
+export function monthJournal(logs: DayLog[], trackers: Tracker[], month: ISOMonth, contacts: Contact[] = []): MonthJournal {
   const from = monthStart(month);
   const to = monthEnd(month);
   const inMonth = logs.filter((l) => !l.deleted && l.date >= from && l.date <= to);
@@ -34,6 +36,7 @@ export function monthJournal(logs: DayLog[], trackers: Tracker[], month: ISOMont
   const byId = new Map(live.map((t) => [t.id, t]));
   const moods = inMonth.map((l) => l.mood).filter((m): m is number => typeof m === 'number');
   const perGroup: Record<Tracker['group'], number> = { sorties: 0, moi: 0, travail: 0, autres: 0 };
+  const cname = new Map(contacts.map((c) => [c.id, c.name]));
   const counts = new Map<string, { days: Set<string>; details: string[] }>();
   for (const l of inMonth) {
     const groups = new Set<Tracker['group']>();
@@ -44,10 +47,23 @@ export function monthJournal(logs: DayLog[], trackers: Tracker[], month: ISOMont
       const c = counts.get(t.id) || { days: new Set(), details: [] };
       c.days.add(l.date);
       if (it.detail) c.details.push(it.detail);
+      for (const id of [...(it.people || []), ...(it.places || [])]) if (cname.has(id)) c.details.push(cname.get(id)!);
       counts.set(t.id, c);
     }
     groups.forEach((g) => perGroup[g]++);
   }
+  const contactDays = new Map<string, Set<string>>();
+  for (const l of inMonth)
+    for (const it of l.items)
+      for (const id of [...(it.people || []), ...(it.places || [])]) {
+        const set = contactDays.get(id) || new Set<string>();
+        set.add(l.date);
+        contactDays.set(id, set);
+      }
+  const perContact = contacts
+    .filter((c) => !c.deleted && contactDays.has(c.id))
+    .map((c) => ({ contact: c, days: contactDays.get(c.id)!.size }))
+    .sort((a, b) => b.days - a.days || a.contact.order - b.contact.order);
   const loggedDays = inMonth.filter((l) => l.items.length || l.mood || l.text);
   return {
     daysLogged: loggedDays.length,
@@ -57,6 +73,7 @@ export function monthJournal(logs: DayLog[], trackers: Tracker[], month: ISOMont
       .sort((a, b) => b.days - a.days || a.tracker.order - b.tracker.order),
     perGroup,
     bestDays: inMonth.filter((l) => l.mood === 5).map((l) => l.date).sort(),
+    perContact,
   };
 }
 

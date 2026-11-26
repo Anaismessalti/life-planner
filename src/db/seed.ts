@@ -1,5 +1,6 @@
 import { db } from './db';
-import type { BaseRecord, BudgetCategory, Category, Collection, TableName, Tracker } from './types';
+import type { BaseRecord, BudgetCategory, Category, Collection, Contact, TableName, Tracker } from './types';
+import { COLORS } from '../lib/icons';
 
 // Les données par défaut ont des horodatages à 1 : toute modification réelle (sur n'importe
 // quel appareil) l'emporte toujours sur elles lors de la synchronisation.
@@ -65,6 +66,11 @@ export const DEFAULT_TRACKERS: [string, string, string, string, Tracker['group']
   ['tr-voyage', 'Voyage', 'plane', '#3E9C9B', 'travail'],
 ];
 
+export const DEFAULT_PEOPLE = [
+  'Léa', 'Yasmine', 'Alice', 'Rym', 'Antho', 'Roro', 'Nono', 'Rayou', 'Adri', 'Juju', 'Nico', 'Tom', 'Lyna', 'Shiraz', 'Maman', 'Nicola', 'Austin',
+];
+const slug = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
 async function putSeed(table: TableName, recs: BaseRecord[]) {
   const t = db.table_(table);
   for (const r of recs) {
@@ -82,6 +88,15 @@ export async function seedDefaults() {
       DEFAULT_TRACKERS.map(([id, name, icon, color, group], i) => seedRec<Tracker>({ id, name, icon, color, group, order: i })),
     );
     await db.meta.put({ key: 'seededTrackers', value: true });
+  }
+  if (!(await db.meta.get('seededPeople'))) {
+    await putSeed(
+      'contacts',
+      DEFAULT_PEOPLE.map((name, i) =>
+        seedRec<Contact>({ id: `pe-${slug(name)}`, name, kind: 'person', icon: name === 'Austin' ? 'paw' : name === 'Maman' ? 'heart' : 'users', color: COLORS[i % COLORS.length], order: i }),
+      ),
+    );
+    await db.meta.put({ key: 'seededPeople', value: true });
   }
   const done = await db.meta.get('seeded');
   if (done) return;

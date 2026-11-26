@@ -68,6 +68,8 @@ export function SettingsPage() {
           <ListManager table="collections" title="Collections de notes" />
           <ListManager table="budgetCategories" title="Catégories de dépenses" withKind />
           <ListManager table="trackers" title="Suivis du journal" withGroup />
+          <ListManager table="contacts" title="Mes proches" kindFilter="person" />
+          <ListManager table="contacts" title="Mes lieux (bars, boîtes, restos)" kindFilter="place" />
         </div>
 
         <div className="min-w-0 space-y-7">
@@ -100,8 +102,8 @@ export function SettingsPage() {
 
 type ListRec = BaseRecord & { name: string; color: string; icon: string; order: number; kind?: 'fixed' | 'variable'; group?: string };
 
-function ListManager({ table, title, withKind, withGroup }: { table: TableName; title: string; withKind?: boolean; withGroup?: boolean }) {
-  const items = (useLiveQuery(() => db.table_(table).toArray(), [table], []) as ListRec[]).filter((x) => !x.deleted).sort((a, b) => a.order - b.order);
+function ListManager({ table, title, withKind, withGroup, kindFilter }: { table: TableName; title: string; withKind?: boolean; withGroup?: boolean; kindFilter?: 'person' | 'place' }) {
+  const items = (useLiveQuery(() => db.table_(table).toArray(), [table], []) as ListRec[]).filter((x) => !x.deleted && (!kindFilter || (x as any).kind === kindFilter)).sort((a, b) => a.order - b.order);
   const [open, setOpen] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const move = async (i: number, d: number) => {
@@ -175,11 +177,11 @@ function ListManager({ table, title, withKind, withGroup }: { table: TableName; 
           e.preventDefault();
           if (!newName.trim()) return;
           const order = Math.max(0, ...items.map((x) => x.order)) + 1;
-          await create(table, { name: newName.trim(), color: COLORS[order % COLORS.length], icon: 'star', order, ...(withKind ? { kind: 'variable' } : {}), ...(withGroup ? { group: 'autres' } : {}) } as any);
+          await create(table, { name: newName.trim(), color: COLORS[order % COLORS.length], icon: 'star', order, ...(withKind ? { kind: 'variable' } : {}), ...(withGroup ? { group: 'autres' } : {}), ...(kindFilter ? { kind: kindFilter, icon: kindFilter === 'place' ? 'martini' : 'users' } : {}) } as any);
           setNewName('');
         }}
       >
-        <input className="input py-2" placeholder="Nouvelle…" value={newName} onChange={(e) => setNewName(e.target.value)} />
+        <input className="input py-2" placeholder={kindFilter === 'person' ? 'Ajouter une personne' : kindFilter === 'place' ? 'Ajouter un lieu' : 'Nouvelle…'} value={newName} onChange={(e) => setNewName(e.target.value)} />
         <button className="icon-btn" aria-label="Ajouter">
           <Plus size={18} />
         </button>

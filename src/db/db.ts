@@ -4,6 +4,7 @@ import type {
   BudgetCategory,
   Category,
   Collection,
+  Contact,
   DayLog,
   Expense,
   FixedExpense,
@@ -45,6 +46,7 @@ export class PlannerDB extends Dexie {
   settings!: Table<SettingRecord, string>;
   trackers!: Table<Tracker, string>;
   daylogs!: Table<DayLog, string>;
+  contacts!: Table<Contact, string>;
   /** Données propres à l'appareil, jamais synchronisées. */
   meta!: Table<MetaRecord, string>;
   /** File d'attente des enregistrements modifiés localement, à envoyer au serveur. */
@@ -73,6 +75,8 @@ export class PlannerDB extends Dexie {
       trackers: 'id, order, updatedAt',
       daylogs: 'id, date, updatedAt',
     });
+    // Version 3 : proches et lieux du journal
+    this.version(3).stores({ contacts: 'id, kind, order, updatedAt' });
   }
 
   table_(name: TableName): Table<BaseRecord, string> {

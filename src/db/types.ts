@@ -186,13 +186,22 @@ export interface Tracker extends BaseRecord {
   group: 'sorties' | 'moi' | 'travail' | 'autres';
 }
 
+/** Une personne (amie, famille, animal) ou un lieu (bar, boîte, resto) à sélectionner dans le journal. */
+export interface Contact extends BaseRecord {
+  name: string;
+  kind: 'person' | 'place';
+  icon: string;
+  color: string;
+  order: number;
+}
+
 /** Journal d'une journée. id = date (YYYY-MM-DD) : jamais de doublon, même entre appareils. */
 export interface DayLog extends BaseRecord {
   date: ISODate;
   /** Note de la journée, de 1 à 5. */
   mood?: number;
   /** Activités cochées, avec un détail facultatif (« avec Léa », « chez Sarah »). */
-  items: { trackerId: string; detail?: string }[];
+  items: { trackerId: string; detail?: string; people?: string[]; places?: string[] }[];
   text?: string;
 }
 
@@ -214,7 +223,8 @@ export type TableName =
   | 'notes'
   | 'settings'
   | 'trackers'
-  | 'daylogs';
+  | 'daylogs'
+  | 'contacts';
 
 export const SYNC_TABLES: TableName[] = [
   'tasks',
@@ -231,4 +241,5 @@ export const SYNC_TABLES: TableName[] = [
   'settings',
   'trackers',
   'daylogs',
+  'contacts',
 ];

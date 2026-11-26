@@ -160,18 +160,28 @@ ok('Projet de décembre dans les objectifs du mois', await page.getByRole('butto
 await page.locator('nav button:visible', { hasText: 'Journal' }).first().click();
 await page.getByTestId('mood-5').click();
 await page.getByTestId('tracker-tr-apero').click();
-await page.getByTestId('tracker-detail').fill('chez Sarah');
+await page.getByTestId('contact-pe-lea').click();
+await page.getByTestId('contact-pe-austin').click();
+await page.getByTestId('add-place').click();
+await page.getByTestId('new-place').fill('le Perchoir');
 await page.keyboard.press('Enter');
+await page.waitForTimeout(300);
+await page.getByTestId('with-done').click();
 await page.getByTestId('tracker-tr-alcool').click();
-await page.keyboard.press('Escape');
+await page.getByTestId('with-done').click();
+ok('Journal : apéro avec Léa, Austin au Perchoir affiché', await page.locator('[data-testid=tracker-tr-apero]:has-text("Léa, Austin, Le Perchoir")').count());
+await page.screenshot({ path: 'e2e/shots/iphone-journal-amis.png' });
 await page.locator('button[aria-label="Jour précédent"]').click();
 await page.getByTestId('mood-3').click();
 await page.getByTestId('tracker-tr-cinema').click();
+await page.getByTestId('contact-pe-lea').click();
+await page.getByTestId('with-done').click();
 await page.waitForTimeout(400);
 ok('Journal : 2 jours de sortie comptés', (await page.getByTestId('stat-Jours de sortie').textContent()).startsWith('2'));
 ok('Journal : alcool 1 jour', (await page.getByTestId('stat-Alcool').textContent()).startsWith('1'));
 ok('Journal : humeur moyenne 4', (await page.getByTestId('mood-avg').textContent()).includes('4'));
-ok('Journal : détail « chez Sarah » retenu', await page.locator('text=Le plus souvent : chez Sarah').count() || await page.locator('text=Sarah (1)').count());
+ok('Journal : Léa comptée 2 jours', (await page.getByTestId('people-count-pe-lea').textContent()).endsWith('2'));
+ok('Journal : nouveau lieu créé une seule fois', (await page.locator('[data-testid^=people-count-]', { hasText: 'Perchoir' }).count()) === 1);
 await page.screenshot({ path: 'e2e/shots/iphone-journal.png', fullPage: true });
 
 // Persistance après fermeture
