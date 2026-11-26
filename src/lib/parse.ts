@@ -8,7 +8,7 @@ const DAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'sa
  * « demain », « aujourd'hui », « après-demain », un jour de la semaine, « 14h », « 14h30 », « 9:15 »,
  * et « ! » ou « urgent » pour une priorité essentielle. Fonctionne aussi avec la dictée vocale.
  */
-const EVENT_WORDS = /\b(rdv|rendez[- ]vous|entretien|réunion|reunion|meeting|visio|dentiste|médecin|medecin|docteur|kiné|kine|gynéco|gyneco|ophtalmo|dermato|coiffeur|esthéticienne|dîner|diner|déjeuner|dejeuner|brunch|apéro|apero|anniversaire|cours|séance|seance|vol|train)\b/i;
+const EVENT_WORDS = /(?:^|[^\p{L}])(rdv|rendez[- ]vous|entretien|réunion|reunion|meeting|visio|dentiste|médecin|medecin|docteur|kiné|kine|gynéco|gyneco|ophtalmo|dermato|coiffeur|esthéticienne|dîner|diner|déjeuner|dejeuner|brunch|apéro|apero|anniversaire|cours|séance|seance|vol|train)(?=$|[^\p{L}])/iu;
 
 export function parseQuick(input: string, today: ISODate = todayISO()): { title: string; date?: ISODate; time?: HHmm; priority?: Priority; kind?: 'task' | 'event' } {
   let s = ` ${input.trim()} `;

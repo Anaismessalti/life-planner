@@ -23,6 +23,8 @@ import {
   serverTimestamp,
   Timestamp,
   connectFirestoreEmulator,
+  startAfter,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import type { RemoteAdapter, RemoteRecord } from './engine';
 import type { TableName } from '../../db/types';
@@ -126,19 +128,23 @@ export function firestoreAdapter(user: User): RemoteAdapter {
       const out: RemoteRecord[] = [];
       // Petit chevauchement volontaire : relire 2 minutes est sans risque (fusion idempotente)
       // et évite de manquer une écriture validée en retard par le serveur.
-      let from = Timestamp.fromMillis(Math.max(0, cursor - OVERLAP_MS));
+      const from = Timestamp.fromMillis(Math.max(0, cursor - OVERLAP_MS));
       let max = cursor;
+      // Pagination par document (startAfter) : plusieurs documents écrits dans le même lot partagent
+      // le même horodatage serveur ; paginer sur l'heure seule en aurait fait sauter.
+      let last: QueryDocumentSnapshot | undefined;
       for (;;) {
-        const snap = await getDocs(query(col, where('srv', '>', from), orderBy('srv'), limit(500)));
+        const q = last
+          ? query(col, where('srv', '>', from), orderBy('srv'), startAfter(last), limit(500))
+          : query(col, where('srv', '>', from), orderBy('srv'), limit(500));
+        const snap = await getDocs(q);
         for (const d of snap.docs) {
           const data = d.data() as { table: TableName; record: any; srv?: Timestamp };
           out.push({ table: data.table, record: data.record });
-          if (data.srv) {
-            from = data.srv;
-            max = Math.max(max, data.srv.toMillis());
-          }
+          if (data.srv) max = Math.max(max, data.srv.toMillis());
         }
         if (snap.size < 500) break;
+        last = snap.docs[snap.docs.length - 1];
       }
       return { records: out, cursor: max };
     },

@@ -1,3 +1,4 @@
+import { quoteOfDay } from '../lib/quotes';
 import { BookHeart, CalendarClock, Settings as Cog, Sparkles } from 'lucide-react';
 import { MoodPicker, useDayLogs } from './Journal';
 import { MOODS } from '../lib/journal';
@@ -18,15 +19,7 @@ function greeting(name: string) {
   return name ? `${base}, ${name}` : base;
 }
 
-const QUOTES = [
-  'Un pas après l’autre, tout devient possible.',
-  'Aujourd’hui est une page blanche : écris-la avec douceur.',
-  'Fais de ton mieux, et sois fière de chaque petite victoire.',
-  'La constance vaut mieux que la perfection.',
-  'Prends soin de toi, le reste suivra.',
-  'Petit à petit, l’oiseau fait son nid.',
-  'Tu as déjà accompli tellement de choses.',
-];
+
 
 export function TodayPage() {
   const today = useToday();
@@ -64,7 +57,7 @@ export function TodayPage() {
   const logs = useDayLogs();
   const todayLog = logs.find((l) => l.id === today);
   const dateLabel = capitalize(fmt(today, 'EEEE d MMMM'));
-  const quote = QUOTES[Number(today.slice(8)) % QUOTES.length];
+  const quote = quoteOfDay(today);
 
   return (
     <div className="space-y-6">
@@ -87,7 +80,7 @@ export function TodayPage() {
             {progress.total === 0 ? 'Journée libre' : progress.pct === 100 ? 'Tout est fait !' : `${progress.done} sur ${progress.total} tâches`}
           </div>
           <div className="text-sm text-soft">
-            {events.length} rendez-vous · {must.length} essentiel{must.length > 1 ? 's' : ''} restant{must.length > 1 ? 's' : ''}
+            {events.length} rendez-vous · {must.length} à faire absolument
             {inboxCount > 0 && (
               <>
                 {' · '}

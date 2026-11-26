@@ -235,7 +235,7 @@ export function NoteEditor({ id, link }: { id?: string; link?: boolean }) {
         )}
         <input className="input text-lg" placeholder="Titre" value={f.title || ''} onChange={(e) => setF({ title: e.target.value })} autoFocus={!existing && !showLink} data-testid="note-title" aria-label="Titre" />
         <textarea className="input min-h-[140px]" placeholder="Écris librement… (ingrédients, adresse, idées)" value={f.text || ''} onChange={(e) => setF({ text: e.target.value })} aria-label="Texte" />
-        <Field label="Collection">
+        <Field label="Collection" group>
           <div className="flex flex-wrap gap-2">
             {cols.map((c) => (
               <button type="button" key={c.id} className={`chip ${f.collectionId === c.id ? 'chip-on' : ''}`} onClick={() => setF({ collectionId: f.collectionId === c.id ? undefined : c.id })}>

@@ -15,6 +15,7 @@ import {
   monthStart,
   range,
   weekStart,
+  todayISO,
 } from '../lib/dates';
 import { eur, financeOccurrencesIn, togglePayment } from '../lib/finance';
 import { useAllTasks, useCategoryMap, useFinance, useMedia, useProjects, useToday } from '../lib/hooks';
@@ -87,7 +88,7 @@ export function CalendarPage() {
             { value: 'day', label: 'Jour' },
             { value: 'week', label: 'Semaine' },
             { value: 'month', label: 'Mois' },
-            { value: 'inbox', label: <Inbox size={16} className="mx-auto" aria-label="Sans date" /> },
+            { value: 'inbox', label: <span className="inline-flex items-center justify-center gap-1" aria-label="Sans date"><Inbox size={15} /><span className="hidden sm:inline">Sans date</span></span> },
           ]}
         />
       </header>
@@ -282,9 +283,13 @@ function MonthView({
   const selItems = tasks.filter((t) => t.date === sel);
   const selPay = pay.filter((p) => p.date === sel);
 
-  const goals = all.filter((t) => !t.deleted && t.targetMonth === month && !t.date);
+  // Objectifs du mois ; ceux des mois passés non terminés remontent dans le mois en cours (rien n'est oublié).
+  const curMonth = monthOf(todayISO());
+  const goals = all.filter(
+    (t) => !t.deleted && !t.date && !t.recurrence && (t.targetMonth === month || (month === curMonth && !!t.targetMonth && t.targetMonth < month && t.status !== 'done')),
+  );
   const goalProjects = projectsArr.filter(
-    (p) => p.targetMonth === month || (!p.targetMonth && p.dueDate && monthOf(p.dueDate) === month),
+    (p) => p.status !== 'abandoned' && (p.targetMonth === month || (!p.targetMonth && p.dueDate && monthOf(p.dueDate) === month)),
   );
 
   const grid = (

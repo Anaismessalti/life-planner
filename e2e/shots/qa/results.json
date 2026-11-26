@@ -1,0 +1,220 @@
+{
+  "results": [
+    {
+      "name": "Report : « Déclarer les impôts » reportée à aujourd’hui (une seule fois)",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Report : date initiale et échéance conservées, rendez-vous non déplacé",
+      "pass": true,
+      "extra": "{\"date\":\"2026-11-26\",\"originalDate\":\"2026-11-20\",\"dueDate\":\"2026-11-30\",\"hist\":1,\"kine\":\"2026-11-19\"}"
+    },
+    {
+      "name": "Report idempotent après réouverture (pas de doublon)",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Citation du jour affichée",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Objectif d’octobre non terminé visible en novembre",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Projet chiffré : 42 km sur 100 = 42 %",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Projet étapes + tâches : 40 %",
+      "pass": true,
+      "extra": "40%"
+    },
+    {
+      "name": "Tâche terminée → étape « Révisions » validée → 80 %",
+      "pass": true,
+      "extra": "80%"
+    },
+    {
+      "name": "Tâche rouverte → retour à 40 %",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Japon relié à l’épargne : 600 € / 3000 € = 20 %",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Projet en 2028 affiché",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Projet abandonné rangé avec les projets finis",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Budget octobre : reste à vivre 1 033,39 €",
+      "pass": true,
+      "extra": "1 033,39 €"
+    },
+    {
+      "name": "Épargne : montant à mettre de côté par mois calculé",
+      "pass": true,
+      "extra": "À mettre de côté : 480,00 € par mois jusqu'au 31 mars 2027"
+    },
+    {
+      "name": "Analytics : période Octobre 2026",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Analytics : 14 jours de sortie",
+      "pass": true,
+      "extra": "14"
+    },
+    {
+      "name": "Analytics : 3 jours HENDAYE",
+      "pass": true,
+      "extra": "3"
+    },
+    {
+      "name": "Analytics : 20 jours travaillés",
+      "pass": true,
+      "extra": "20"
+    },
+    {
+      "name": "Analytics : 5 jours de télétravail",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Analytics : 3 restos",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Analytics : complétion 30/31",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Analytics : humeur moyenne 3.4",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Analytics : dépenses du journal 410,23 €",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Analytics : Léa 0 jours",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Filtre « Mon cycle » : seules les activités du cycle",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Vue année 2026 : heatmap 12 mois",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Journée passée ouverte (5 octobre)",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Modification rétroactive prise en compte dans les stats",
+      "pass": true,
+      "extra": "15 vs 15"
+    },
+    {
+      "name": "… et dans les dépenses du journal",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Nouvel an : le mois en cours est Janvier 2027",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Semaine à cheval sur deux années",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Budget de janvier 2027 : loyer et salaire récurrents présents",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Nouvel an : la tâche en retard reportée au 3 janvier, toujours une seule",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "320 px sans débordement : today",
+      "pass": true,
+      "extra": "+0px"
+    },
+    {
+      "name": "320 px sans débordement : calendar",
+      "pass": true,
+      "extra": "+0px"
+    },
+    {
+      "name": "320 px sans débordement : projects",
+      "pass": true,
+      "extra": "+0px"
+    },
+    {
+      "name": "320 px sans débordement : budget",
+      "pass": true,
+      "extra": "+0px"
+    },
+    {
+      "name": "320 px sans débordement : notes",
+      "pass": true,
+      "extra": "+0px"
+    },
+    {
+      "name": "320 px sans débordement : journal",
+      "pass": true,
+      "extra": "+0px"
+    },
+    {
+      "name": "320 px sans débordement : journal/stats",
+      "pass": true,
+      "extra": "+0px"
+    },
+    {
+      "name": "320 px sans débordement : settings",
+      "pass": true,
+      "extra": "+0px"
+    },
+    {
+      "name": "97 boutons touchés sans erreur",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Aucun écran d’erreur affiché",
+      "pass": true,
+      "extra": ""
+    }
+  ],
+  "errors": []
+}

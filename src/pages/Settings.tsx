@@ -1,3 +1,5 @@
+import { FORMS, formOf } from '../lib/lifeforms';
+import type { TrackerForm } from '../db/types';
 import { GROUP_LABEL, GROUP_ORDER } from '../lib/journal';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowDown, ArrowUp, Bell, Cloud, Download, Moon, Palette, Plus, RefreshCw, ShieldCheck, Sun, Trash2, Upload, User } from 'lucide-react';
@@ -154,6 +156,15 @@ function ListManager({ table, title, withKind, withGroup, kindFilter }: { table:
                     {GROUP_ORDER.map((g) => (
                       <option key={g} value={g}>
                         {GROUP_LABEL[g]}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {withGroup && (
+                  <select className="input py-2" value={(c as any).form || formOf(c as any)} onChange={(e) => update(table, c.id, { form: e.target.value } as any)} aria-label="Champs à remplir">
+                    {(Object.keys(FORMS) as TrackerForm[]).map((k) => (
+                      <option key={k} value={k}>
+                        Champs : {FORMS[k].label}
                       </option>
                     ))}
                   </select>

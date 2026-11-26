@@ -5,3 +5,4 @@ dist-preview
 .DS_Store
 e2e/shots/debug-*
 e2e/demo-backup.json
+e2e/qa-3mois.json

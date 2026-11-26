@@ -9,7 +9,7 @@ import { describeRecurrence } from '../lib/recurrence';
 import { PRIORITY_LABEL, deleteTask, materialize, type TaskView } from '../lib/tasks';
 import { closeEditor } from '../lib/ui-store';
 import { Icon } from '../lib/icons';
-import { ConfirmButton, Field, Segmented, Sheet, Toggle, toast } from './ui';
+import { ConfirmButton, Field, MonthPicker, Segmented, Sheet, Toggle, toast } from './ui';
 
 type RecMode = 'none' | Freq | 'custom';
 
@@ -36,12 +36,16 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
   }, [isNew]);
 
   const rec = f.recurrence;
+  // Le mode « Personnalisée » est mémorisé à part : une règle personnalisée commence comme une règle simple
+  // (tous les 1, aucun jour choisi) et ne doit pas rebasculer sur « Chaque semaine ».
+  const [customPicked, setCustomPicked] = useState(false);
   const recMode: RecMode = !rec
     ? 'none'
-    : rec.interval > 1 || (rec.byWeekday && rec.byWeekday.length > 1)
+    : customPicked || rec.interval > 1 || (rec.byWeekday && rec.byWeekday.length > 1) || !!rec.until
       ? 'custom'
       : rec.freq;
   const setRecMode = (m: RecMode) => {
+    setCustomPicked(m === 'custom');
     if (m === 'none') return set({ recurrence: undefined });
     const base: Recurrence = m === 'custom' ? { freq: 'weekly', interval: 1, byWeekday: [] } : { freq: m, interval: 1 };
     set({ recurrence: base, date: f.date || today });
@@ -180,7 +184,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
           {preview && (preview.date || preview.time || preview.priority) && (
             <p className="mt-1.5 text-xs text-rasp">
               Compris : {preview.date ? relativeDay(preview.date, today) : ''} {preview.time ? `à ${preview.time}` : ''}{' '}
-              {preview.priority === 'must' ? '· essentiel' : ''}
+              {preview.priority === 'must' ? '· à faire absolument' : ''}
             </p>
           )}
         </div>
@@ -228,7 +232,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
                 step={5}
                 className="input"
                 value={f.duration ?? ''}
-                onChange={(e) => set({ duration: e.target.value ? Number(e.target.value) : undefined })}
+                onChange={(e) => set({ duration: e.target.value && Number(e.target.value) > 0 ? Math.round(Number(e.target.value)) : undefined })}
               />
             </Field>
           </div>
@@ -240,7 +244,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
           </button>
         ) : (
           <div className="space-y-4">
-            <Field label="Catégorie">
+            <Field label="Catégorie" group>
               <div className="flex flex-wrap gap-2">
                 {cats.map((c) => (
                   <button
@@ -263,19 +267,14 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
             <Field label="Description">
               <textarea className="input min-h-[70px]" value={f.description || ''} onChange={(e) => set({ description: e.target.value || undefined })} />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div>
               <Field label="Échéance" hint="Jamais modifiée automatiquement">
                 <input type="date" className="input" value={f.dueDate || ''} onChange={(e) => set({ dueDate: e.target.value || undefined })} />
               </Field>
-              <Field label="Objectif du mois" hint="Si pas de jour précis">
-                <input
-                  type="month"
-                  className="input"
-                  value={f.targetMonth || ''}
-                  onChange={(e) => set({ targetMonth: e.target.value || undefined, date: e.target.value ? undefined : f.date })}
-                />
-              </Field>
             </div>
+            <Field label="Objectif du mois" hint="Si pas de jour précis : apparaît dans « Mes objectifs du mois »" group>
+              <MonthPicker value={f.targetMonth} onChange={(v) => set({ targetMonth: v, date: v ? undefined : f.date })} testid="task-month" />
+            </Field>
 
             <Field label="Répétition">
               <select className="input" value={recMode} onChange={(e) => setRecMode(e.target.value as RecMode)}>
@@ -356,7 +355,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
               </Field>
             )}
 
-            <Field label="Sous-tâches">
+            <Field label="Sous-tâches" group>
               <div className="space-y-1.5">
                 {(f.subtasks || []).map((s) => (
                   <div key={s.id} className="flex items-center gap-2">

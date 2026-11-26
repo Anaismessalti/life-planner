@@ -1,8 +1,8 @@
 import { Inbox, Receipt } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Category, Priority, Project, Task } from '../db/types';
 import { timeToMin } from '../lib/dates';
-import { eur, type Occurrence } from '../lib/finance';
+import { eur, parseAmount, setPaymentAmount, type Occurrence } from '../lib/finance';
 import { PRIORITY_LABEL, materialize, moveTask, type TaskView } from '../lib/tasks';
 import { update } from '../db/db';
 import { openEditor } from '../lib/ui-store';
@@ -171,25 +171,64 @@ export function PaymentsList({ items, onToggle }: { items: Occurrence[]; onToggl
   return (
     <div className="space-y-2">
       {items.map((o) => (
-        <div key={o.refId + o.date} className="flex items-center gap-3 rounded-2xl border border-line/70 bg-card px-3.5 py-2.5 shadow-soft">
-          <span className={`flex h-8 w-8 items-center justify-center rounded-full ${o.refType === 'income' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-blush text-plum'}`}>
-            <Receipt size={15} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{o.label}</div>
-            <div className="text-xs text-soft">
-              {o.refType === 'income' ? 'Revenu' : 'Prélèvement'} · {o.confirmed !== undefined ? (o.refType === 'income' ? 'reçu' : 'payé') : 'non confirmé'}
-            </div>
-          </div>
-          <span className={`text-sm font-semibold ${o.refType === 'income' ? 'text-emerald-700 dark:text-emerald-300' : 'text-plum'}`}>
-            {o.refType === 'income' ? '+' : '−'}
-            {eur(o.confirmed ?? o.planned)}
-          </span>
-          <button className={`chip text-xs ${o.confirmed !== undefined ? 'chip-on' : ''}`} onClick={() => onToggle(o)}>
-            {o.confirmed !== undefined ? '✓' : 'Confirmer'}
-          </button>
-        </div>
+        <PaymentRow key={o.refId + o.date} o={o} onToggle={onToggle} />
       ))}
+    </div>
+  );
+}
+
+/** Une échéance : touche le montant pour indiquer le montant réel (ex. salaire de 1 950 € au lieu de 2 000 €). */
+function PaymentRow({ o, onToggle }: { o: Occurrence; onToggle: (o: Occurrence) => void }) {
+  const [edit, setEdit] = useState(false);
+  const [txt, setTxt] = useState('');
+  const income = o.refType === 'income';
+  const diff = o.confirmed !== undefined && o.confirmed !== o.planned;
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-line/70 bg-card px-3.5 py-2.5 shadow-soft" data-testid="payment-row">
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${income ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-blush text-plum'}`}>
+        <Receipt size={15} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium">{o.label}</div>
+        <div className="text-xs text-soft">
+          {o.orphan ? 'historique conservé' : `${income ? 'Revenu' : 'Prélèvement'} · ${o.confirmed !== undefined ? (income ? 'reçu' : 'payé') : 'non confirmé'}`}
+          {diff && !o.orphan && ` · prévu ${eur(o.planned)}`}
+        </div>
+      </div>
+      {edit ? (
+        <form
+          className="flex items-center gap-1"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const v = parseAmount(txt);
+            if (v === undefined || v < 0) return toast('Montant non reconnu (ex : 1 950,50)');
+            await setPaymentAmount(o, v);
+            setEdit(false);
+            toast(`Montant réel enregistré : ${eur(v)}`);
+          }}
+        >
+          <input autoFocus className="input w-24 py-1.5" inputMode="decimal" value={txt} onChange={(e) => setTxt(e.target.value)} aria-label="Montant réel" data-testid="payment-actual" />
+          <button className="chip chip-on text-xs">OK</button>
+        </form>
+      ) : (
+        <button
+          className={`text-sm font-semibold underline decoration-dotted underline-offset-4 ${income ? 'text-emerald-700 dark:text-emerald-300' : 'text-plum'}`}
+          onClick={() => {
+            if (o.orphan) return;
+            setTxt(String(o.confirmed ?? o.planned).replace('.', ','));
+            setEdit(true);
+          }}
+          aria-label="Modifier le montant réel"
+        >
+          {income ? '+' : '−'}
+          {eur(o.confirmed ?? o.planned)}
+        </button>
+      )}
+      {!o.orphan && !edit && (
+        <button className={`chip min-h-[36px] text-xs ${o.confirmed !== undefined ? 'chip-on' : ''}`} onClick={() => onToggle(o)}>
+          {o.confirmed !== undefined ? '✓' : 'Confirmer'}
+        </button>
+      )}
     </div>
   );
 }

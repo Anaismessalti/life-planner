@@ -51,7 +51,7 @@ export function TaskItem({
         <button
           onClick={toggle}
           aria-label={done ? 'Marquer comme non faite' : 'Marquer comme faite'}
-          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition ${
+          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center relative rounded-full border-2 after:absolute after:-inset-2.5 after:content-[''] transition ${
             done ? 'anim-pop border-rasp bg-rasp text-white' : 'border-mauve hover:border-rasp'
           }`}
         >

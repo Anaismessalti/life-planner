@@ -1,10 +1,10 @@
 import { ChevronLeft, ChevronRight, PiggyBank, Plus, Receipt, Trash2, Wallet } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { PaymentsList } from '../components/DayViews';
-import { ConfirmButton, Empty, Field, Progress, Section, Segmented, Sheet, toast } from '../components/ui';
+import { ConfirmButton, Empty, Field, Progress, Section, Segmented, Sheet, Toggle, toast } from '../components/ui';
 import { create, db, uid, update } from '../db/db';
 import type { BudgetCategory, Expense, FixedExpense, Frequency, Income, IncomeType, SavingsGoal } from '../db/types';
-import { addMonths, fmt, fmtMonth, monthOf, todayISO } from '../lib/dates';
+import { addMonths, fmt, fmtMonth, isISODate, monthOf, todayISO } from '../lib/dates';
 import { INCOME_TYPE_LABEL, eur, history, monthSummary, parseAmount, togglePayment, type MonthSummary } from '../lib/finance';
 import { useBudgetCategories, useFinance, useToday } from '../lib/hooks';
 import { Icon } from '../lib/icons';
@@ -87,7 +87,10 @@ function Overview({ s, month, today }: { s: MonthSummary; month: string; today: 
         <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-white/20">
           <div className="h-full rounded-full bg-white/90 transition-all duration-700" style={{ width: `${Math.min(100, pct)}%` }} />
         </div>
-        <div className="relative mt-1.5 text-xs text-white/75">{Math.round(pct)} % des revenus prévus engagés</div>
+        <div className="relative mt-1.5 text-xs text-white/75" data-testid="engaged">
+          {Math.round(pct)} % des revenus prévus engagés
+          {pct > 100 && <b className="text-white"> · dépassement de {eur(spent - s.incomePlanned)}</b>}
+        </div>
       </div>
 
       {empty && (
@@ -305,6 +308,7 @@ function MoreTab({ month }: { month: string }) {
   const max = Math.max(1, ...hist.flatMap((h) => [h.incomePlanned, h.fixedPlanned + h.variable]));
   const [goalName, setGoalName] = useState('');
   const [goalTarget, setGoalTarget] = useState('');
+  const [goalDeadline, setGoalDeadline] = useState('');
   return (
     <div className="space-y-7">
       <Section title="Historique et comparaison">
@@ -328,12 +332,13 @@ function MoreTab({ month }: { month: string }) {
               <span className="h-2 w-2 rounded-full bg-rasp" /> Dépenses
             </span>
           </div>
-          <table className="mt-4 w-full text-sm">
+          <table className="mt-4 w-full text-[13px] sm:text-sm">
             <thead>
               <tr className="text-left text-xs text-soft">
                 <th className="py-1 font-medium">Mois</th>
                 <th className="py-1 text-right font-medium">Revenus</th>
                 <th className="py-1 text-right font-medium">Dépenses</th>
+                <th className="py-1 text-right font-medium">Épargne</th>
                 <th className="py-1 text-right font-medium">Reste</th>
               </tr>
             </thead>
@@ -343,7 +348,8 @@ function MoreTab({ month }: { month: string }) {
                   <td className="py-1.5">{fmtMonth(h.month)}</td>
                   <td className="py-1.5 text-right">{eur(h.incomePlanned)}</td>
                   <td className="py-1.5 text-right">{eur(h.fixedPlanned + h.variable)}</td>
-                  <td className="py-1.5 text-right font-medium">{eur(h.remainingForecast)}</td>
+                  <td className="py-1.5 text-right">{eur(h.savings)}</td>
+                  <td className={`py-1.5 text-right font-medium ${h.remainingForecast < 0 ? 'text-rasp' : ''}`}>{eur(h.remainingForecast)}</td>
                 </tr>
               ))}
             </tbody>
@@ -391,14 +397,20 @@ function MoreTab({ month }: { month: string }) {
           onSubmit={async (e) => {
             e.preventDefault();
             const t = parseAmount(goalTarget);
-            if (!goalName.trim() || !t) return;
-            await create<SavingsGoal>('savings', { name: goalName.trim(), target: t, contributions: [] } as any);
+            if (!goalName.trim()) return toast('Donne un nom à ton objectif');
+            if (!t || t <= 0) return toast('Indique le montant visé');
+            await create<SavingsGoal>('savings', { name: goalName.trim(), target: t, contributions: [], ...(goalDeadline ? { deadline: goalDeadline } : {}) } as any);
             setGoalName('');
             setGoalTarget('');
+            setGoalDeadline('');
           }}
         >
           <input className="input min-w-[10rem] flex-1" placeholder="Ex : Voyage au Japon" value={goalName} onChange={(e) => setGoalName(e.target.value)} />
           <input className="input w-28" inputMode="decimal" placeholder="Objectif €" value={goalTarget} onChange={(e) => setGoalTarget(e.target.value)} />
+          <label className="flex w-full items-center gap-2 text-xs text-soft">
+            Pour le (facultatif)
+            <input type="date" className="input flex-1 py-1.5" value={goalDeadline} onChange={(e) => setGoalDeadline(e.target.value)} aria-label="Date visée" />
+          </label>
           <button className="btn-soft">
             <PiggyBank size={16} /> Créer
           </button>
@@ -425,17 +437,29 @@ function SavingsCard({ g }: { g: SavingsGoal }) {
         <span>
           {eur(saved)} sur {eur(g.target)}
         </span>
-        <span>{Math.round((saved / g.target) * 100)} %</span>
+        <span>{saved >= g.target ? 'Objectif atteint ✨' : `${Math.round((saved / g.target) * 100)} %`}</span>
       </div>
+      {saved < g.target && g.deadline && (
+        <div className="text-xs text-plum" data-testid="savings-per-month">
+          {(() => {
+            const today = todayISO();
+            const months = Math.max(1, (Number(g.deadline.slice(0, 4)) - Number(today.slice(0, 4))) * 12 + Number(g.deadline.slice(5, 7)) - Number(today.slice(5, 7)) + (g.deadline.slice(8) >= today.slice(8) ? 1 : 0));
+            return g.deadline < today
+              ? `Échéance dépassée (${fmt(g.deadline, 'd MMM yyyy')}) · il manque ${eur(g.target - saved)}`
+              : `À mettre de côté : ${eur(Math.ceil(((g.target - saved) / months) * 100) / 100)} par mois jusqu'au ${fmt(g.deadline, 'd MMM yyyy')}`;
+          })()}
+        </div>
+      )}
       <form
         className="flex gap-2"
         onSubmit={async (e) => {
           e.preventDefault();
           const a = parseAmount(amt);
-          if (!a) return;
+          if (!a) return toast('Montant non reconnu');
+          if (saved + a < 0) return toast(`Tu ne peux pas retirer plus que ${eur(saved)}`);
           await update<SavingsGoal>('savings', g.id, { contributions: [...g.contributions, { id: uid(), date: todayISO(), amount: a }] });
           setAmt('');
-          toast(`${eur(a)} mis de côté ✨`);
+          toast(a > 0 ? `${eur(a)} mis de côté ✨` : `${eur(-a)} retirés`);
         }}
       >
         <input className="input py-1.5" inputMode="decimal" placeholder="Montant (négatif pour un retrait)" value={amt} onChange={(e) => setAmt(e.target.value)} />
@@ -449,17 +473,21 @@ function SavingsCard({ g }: { g: SavingsGoal }) {
 
 export function ExpenseEditor({ id, defaults }: { id?: string; defaults?: { date?: string } }) {
   const cats = useBudgetCategories().filter((c) => c.kind === 'variable');
-  const [f, setF] = useState<Partial<Expense> & { amountText?: string }>({ date: defaults?.date || todayISO() });
+  const [f, setF] = useState<Partial<Expense> & { amountText?: string; refund?: boolean }>({ date: defaults?.date || todayISO() });
   useEffect(() => {
-    if (id) db.expenses.get(id).then((e) => e && setF({ ...e, amountText: String(e.amount).replace('.', ',') }));
+    if (id) db.expenses.get(id).then((e) => e && setF({ ...e, refund: e.amount < 0, amountText: String(Math.abs(e.amount)).replace('.', ',') }));
   }, [id]);
   const save = async () => {
-    const amount = parseAmount(f.amountText || '');
-    if (!amount) return;
-    const rec = { amount, budgetCategoryId: f.budgetCategoryId, date: f.date || todayISO(), note: f.note || undefined };
+    const raw = parseAmount(f.amountText || '');
+    if (raw === undefined || raw === 0) return toast('Indique un montant (ex : 12,50)');
+    if (raw < 0) return toast('Montant positif uniquement. Pour un remboursement, coche « Remboursement ».');
+    if (!isISODate(f.date)) return toast('Choisis une date');
+    // Un remboursement est enregistré en négatif dans sa catégorie : il réduit la dépense du mois.
+    const amount = f.refund ? -raw : raw;
+    const rec = { amount, budgetCategoryId: f.budgetCategoryId, date: f.date, note: f.note || undefined };
     if (id) await update<Expense>('expenses', id, rec);
     else await create<Expense>('expenses', rec as any);
-    toast(`Dépense de ${eur(amount)} enregistrée`);
+    toast(f.refund ? `Remboursement de ${eur(raw)} enregistré` : `Dépense de ${eur(raw)} enregistrée`);
     closeEditor();
   };
   return (
@@ -504,6 +532,8 @@ export function ExpenseEditor({ id, defaults }: { id?: string; defaults?: { date
           />
           <span className="absolute right-4 top-1/2 -translate-y-1/2 font-serif text-2xl text-soft">€</span>
         </div>
+        <Toggle checked={!!f.refund} onChange={(v) => setF({ ...f, refund: v })} label="Remboursement (vient réduire les dépenses de la catégorie)" />
+        {f.journal && <p className="rounded-xl bg-blush/60 px-3 py-2 text-xs text-plum">Ajoutée depuis ton journal ({fmt(f.journal.date, 'd MMMM')}). Tu peux la modifier ici ou dans le journal : c'est la même dépense, comptée une seule fois.</p>}
         <div className="flex flex-wrap gap-2">
           {cats.map((c) => (
             <button
@@ -568,7 +598,9 @@ export function IncomeEditor({ id }: { id?: string }) {
   const setF = (x: Partial<typeof f>) => setFs((o) => ({ ...o, ...x }));
   const save = async () => {
     const amount = parseAmount(f.amountText || '');
-    if (!amount || !f.date) return;
+    if (!amount || amount < 0) return toast('Indique un montant positif (ex : 2 000)');
+    if (!isISODate(f.date)) return toast('Choisis une date');
+    if (f.endDate && f.endDate < f.date) return toast('La date de fin est avant la date de début');
     const rec = { label: f.label?.trim() || INCOME_TYPE_LABEL[f.type!], type: f.type!, amount, date: f.date, frequency: f.frequency!, endDate: f.endDate };
     if (existing) await update<Income>('incomes', existing.id, rec);
     else await create<Income>('incomes', rec as any);
@@ -631,7 +663,10 @@ export function FixedEditor({ id }: { id?: string }) {
   const setF = (x: Partial<typeof f>) => setFs((o) => ({ ...o, ...x }));
   const save = async () => {
     const amount = parseAmount(f.amountText || '');
-    if (!amount || !f.date || !f.label?.trim()) return;
+    if (!f.label?.trim()) return toast('Donne un nom (ex : Loyer)');
+    if (!amount || amount < 0) return toast('Indique un montant positif');
+    if (!isISODate(f.date)) return toast('Choisis la date du premier prélèvement');
+    if (f.endDate && f.endDate < f.date) return toast('La date de fin est avant la date de début');
     const rec = { label: f.label.trim(), amount, budgetCategoryId: f.budgetCategoryId, date: f.date, frequency: f.frequency!, endDate: f.endDate, active: f.active !== false };
     if (existing) await update<FixedExpense>('fixedExpenses', existing.id, rec);
     else await create<FixedExpense>('fixedExpenses', rec as any);
@@ -656,8 +691,11 @@ export function FixedEditor({ id }: { id?: string }) {
             </ConfirmButton>
           )}
           {existing && (
-            <button className="btn-ghost text-xs" onClick={() => setF({ active: !(f.active !== false) })}>
-              {f.active !== false ? 'Mettre en pause' : 'Réactiver'}
+            <button
+              className="btn-ghost text-xs"
+              onClick={() => (f.active !== false ? setF({ active: false, endDate: f.endDate && f.endDate < todayISO() ? f.endDate : todayISO() }) : setF({ active: true, endDate: undefined }))}
+            >
+              {f.active !== false ? 'Arrêter (garde l’historique)' : 'Réactiver'}
             </button>
           )}
           <button className="btn-primary ml-auto px-6" onClick={save}>

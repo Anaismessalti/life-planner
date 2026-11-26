@@ -78,6 +78,13 @@ let again = false;
 let active: RemoteAdapter | null = null;
 let cleanup: (() => void) | null = null;
 
+let firstSyncResolve: (() => void) | null = null;
+const firstSync = new Promise<void>((r) => (firstSyncResolve = r));
+/** Attend la première synchro réussie (au plus `ms` millisecondes). */
+export function waitFirstSync(ms: number) {
+  return Promise.race([firstSync, new Promise<void>((r) => setTimeout(r, ms))]);
+}
+
 async function run() {
   if (!active) return;
   if (running) {
@@ -93,6 +100,7 @@ async function run() {
   try {
     await syncOnce(active);
     setState({ status: 'idle', lastSync: Date.now(), error: undefined });
+    firstSyncResolve?.();
   } catch (e: any) {
     setState({ status: 'error', error: e?.message || String(e) });
   } finally {

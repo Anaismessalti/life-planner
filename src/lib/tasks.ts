@@ -72,7 +72,10 @@ export async function materialize(v: TaskView, patch: Partial<Task> = {}): Promi
     return (await db.tasks.get(v.id))!;
   }
   const { virtual: _v, createdAt: _c, updatedAt: _u, _ts, ...rest } = v;
-  return create<Task>('tasks', { ...rest, recurrence: undefined, ...patch });
+  // Les champs copiés de la série gardent l'ancienneté de la série : si un autre appareil a déjà
+  // coché cette occurrence, sa version (plus récente) l'emporte à la synchronisation.
+  const series = v.seriesId ? await db.tasks.get(v.seriesId) : undefined;
+  return create<Task>('tasks', { ...rest, recurrence: undefined, ...patch }, { fresh: Object.keys(patch), baseTs: series?.updatedAt || 1 });
 }
 
 export async function setDone(t: TaskView, done: boolean) {

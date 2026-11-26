@@ -83,3 +83,17 @@ input, textarea, select { font-size: 16px; }
 @media (min-width: 900px) { .masonry { columns: 3; } }
 @media (min-width: 1300px) { .masonry { columns: 4; } }
 .masonry > * { break-inside: avoid; margin-bottom: 0.9rem; }
+
+/* iPhone : un champ de saisie en dessous de 16px fait zoomer Safari. On garantit 16px partout sur mobile. */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Chiffres alignés (le « 0 » ne ressemble plus à un « o » dans la police à empattements). */
+.font-serif {
+  font-variant-numeric: lining-nums;
+}

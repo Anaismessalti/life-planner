@@ -3,11 +3,18 @@ import { seedDefaults } from '../db/seed';
 import { todayISO } from './dates';
 import { checkReminders } from './notify';
 import { runRollover } from './tasks';
-import { startSync, stopSync, queueEverything } from './sync/engine';
+import { startSync, stopSync, queueEverything, waitFirstSync } from './sync/engine';
+import { migrateJournal } from './lifeforms';
+import { repairData } from './repair';
 
 export async function boot() {
   await seedDefaults();
-  await runRollover();
+  await migrateJournal().catch((e) => console.error('Migration journal', e));
+  await repairData().catch((e) => console.error('Réparation', e));
+  const synced = !!(await getMeta('firebaseConfig', null));
+  // Avec la synchro : on récupère d'abord les changements des autres appareils (sinon une tâche
+  // cochée sur l'iPhone pourrait être reportée ici). Sans synchro : report immédiat.
+  if (!synced) await runRollover();
   // Demande au navigateur de ne jamais effacer les données (important sur iOS / Safari)
   try {
     await navigator.storage?.persist?.();
@@ -26,6 +33,7 @@ export async function boot() {
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && tick());
   setTimeout(() => checkReminders(), 3000);
   initSync().catch(() => {});
+  if (synced) waitFirstSync(8000).then(() => runRollover());
 }
 
 /** Démarre la synchronisation si Firebase est configuré et l'utilisatrice connectée. */

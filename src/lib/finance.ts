@@ -31,6 +31,8 @@ export interface Occurrence {
   /** Montant confirmé (payé / reçu), ou undefined si non confirmé. */
   confirmed?: number;
   budgetCategoryId?: string;
+  /** Paiement confirmé d'un élément supprimé ou dont la date a changé (gardé pour l'historique). */
+  orphan?: boolean;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -53,7 +55,8 @@ export function financeOccurrencesIn(data: Pick<FinanceData, 'incomes' | 'fixed'
     }
   }
   for (const f of data.fixed) {
-    if (f.deleted || !f.active) continue;
+    // Désactivé = arrêté à sa date de fin : les mois passés restent intacts.
+    if (f.deleted || (!f.active && !f.endDate)) continue;
     for (const d of financeOccurrences(f, from, to)) {
       const p = pay.get(paymentId(f.id, d));
       out.push({
@@ -66,6 +69,17 @@ export function financeOccurrencesIn(data: Pick<FinanceData, 'incomes' | 'fixed'
         budgetCategoryId: f.budgetCategoryId,
       });
     }
+  }
+  // Paiements confirmés dont le revenu / prélèvement a été supprimé ou modifié : on les garde dans l'historique.
+  const seen = new Set(out.map((o) => paymentId(o.refId, o.date)));
+  const refs = new Map<string, { label: string; cat?: string }>([
+    ...data.incomes.map((i) => [i.id, { label: i.label }] as const),
+    ...data.fixed.map((f) => [f.id, { label: f.label, cat: f.budgetCategoryId }] as const),
+  ]);
+  for (const p of data.payments) {
+    if (p.deleted || p.status !== 'paid' || p.actualAmount === undefined || p.date < from || p.date > to || seen.has(p.id)) continue;
+    const ref = refs.get(p.refId);
+    out.push({ refId: p.refId, refType: p.refType, label: ref?.label || (p.refType === 'income' ? 'Revenu' : 'Prélèvement'), date: p.date, planned: p.actualAmount, confirmed: p.actualAmount, budgetCategoryId: ref?.cat, orphan: true });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -101,7 +115,7 @@ export function monthSummary(data: FinanceData, month: ISOMonth): MonthSummary {
     .reduce((a, c) => a + c.amount, 0);
 
   const sum = (xs: number[]) => r2(xs.reduce((a, b) => a + b, 0));
-  const incomePlanned = sum(inc.map((o) => o.planned));
+  const incomePlanned = sum(inc.map((o) => o.confirmed ?? o.planned));
   const incomeReceived = sum(inc.map((o) => o.confirmed ?? 0));
   const fixedPlanned = sum(fix.map((o) => o.confirmed ?? o.planned));
   const fixedPaid = sum(fix.map((o) => o.confirmed ?? 0));
@@ -109,8 +123,9 @@ export function monthSummary(data: FinanceData, month: ISOMonth): MonthSummary {
 
   const cats = new Map(data.budgetCategories.filter((c) => !c.deleted).map((c) => [c.id, c]));
   const agg = new Map<string, number>();
-  for (const o of fix) agg.set(o.budgetCategoryId || '_none', (agg.get(o.budgetCategoryId || '_none') || 0) + (o.confirmed ?? o.planned));
-  for (const e of exp) agg.set(e.budgetCategoryId || '_none', (agg.get(e.budgetCategoryId || '_none') || 0) + e.amount);
+  const key = (id?: string) => (id && cats.has(id) ? id : '_none');
+  for (const o of fix) agg.set(key(o.budgetCategoryId), (agg.get(key(o.budgetCategoryId)) || 0) + (o.confirmed ?? o.planned));
+  for (const e of exp) agg.set(key(e.budgetCategoryId), (agg.get(key(e.budgetCategoryId)) || 0) + e.amount);
   const byCategory = [...agg.entries()]
     .map(([id, amount]) => {
       const c = cats.get(id);
@@ -143,11 +158,19 @@ export function history(data: FinanceData, month: ISOMonth, count = 6) {
 const fmtEUR = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 export const eur = (n: number) => fmtEUR.format(n);
 
-/** Accepte « 12,50 », « 12.5 », « 1 200 € ». */
-export function parseAmount(s: string): number | undefined {
-  const clean = s.replace(/\s|€/g, '').replace(',', '.');
-  if (!clean) return undefined;
-  const n = Number(clean);
+/**
+ * Lit un montant écrit à la française : « 12,50 », « 12.5 », « 1 234,56 € », « 1.234,50 ».
+ * Renvoie undefined si ce n'est pas un montant (jamais de « 1e3 » ou « 0x10 »).
+ */
+export function parseAmount(input: string): number | undefined {
+  let s = input.replace(/[\s\u00a0\u202f€]/g, '');
+  if (!s || !/^[-+]?[\d.,]+$/.test(s)) return undefined;
+  if (s.includes(',')) {
+    if ((s.match(/,/g) || []).length > 1) return undefined;
+    s = s.replace(/\.(?=\d{3}(?:[.,]|$))/g, '').replace(',', '.');
+  } else if (/^[-+]?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  if (!/^[-+]?\d+(\.\d+)?$/.test(s)) return undefined;
+  const n = Number(s);
   return Number.isFinite(n) ? r2(n) : undefined;
 }
 
@@ -165,5 +188,18 @@ export async function togglePayment(o: Occurrence) {
   const id = paymentId(o.refId, o.date);
   const cur = await _db.payments.get(id);
   const paid = !(cur && !cur.deleted && cur.status === 'paid');
-  await _upsert<PaymentStatus>('payments', { id, refId: o.refId, refType: o.refType, date: o.date, status: paid ? 'paid' : 'pending' });
+  // Le montant est figé à la confirmation : modifier plus tard le montant prévu ne réécrit pas le passé.
+  await _upsert<PaymentStatus>('payments', {
+    id,
+    refId: o.refId,
+    refType: o.refType,
+    date: o.date,
+    status: paid ? 'paid' : 'pending',
+    actualAmount: paid ? (cur && !cur.deleted && cur.actualAmount !== undefined ? cur.actualAmount : o.planned) : undefined,
+  });
+}
+
+/** Indique le montant réellement payé / reçu (s'il diffère du prévu) et confirme l'opération. */
+export async function setPaymentAmount(o: Occurrence, amount: number) {
+  await _upsert<PaymentStatus>('payments', { id: paymentId(o.refId, o.date), refId: o.refId, refType: o.refType, date: o.date, status: 'paid', actualAmount: r2(amount) });
 }

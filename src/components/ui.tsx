@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 /** Feuille modale : glisse du bas sur iPhone, centrée sur iPad / Mac. */
@@ -53,14 +53,101 @@ export function Sheet({
   );
 }
 
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+/** Champ de formulaire. `group` : pour un groupe de boutons (pas de <label>, sinon un toucher dans le vide active le premier bouton). */
+export function Field({ label, children, hint, group }: { label: string; children: ReactNode; hint?: string; group?: boolean }) {
+  const Tag = group ? 'div' : 'label';
   return (
-    <label className="block space-y-1.5">
-      <span className="label">{label}</span>
+    <Tag className="block space-y-1.5" {...(group ? { role: 'group', 'aria-label': label } : {})}>
+      <span className="label block">{label}</span>
       {children}
       {hint && <span className="block text-xs text-soft">{hint}</span>}
-    </label>
+    </Tag>
   );
+}
+
+const MONTHS_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const MONTHS_LONG = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+/**
+ * Choix d'un mois (YYYY-MM) qui fonctionne partout : le champ natif « mois » n'existe pas
+ * dans Safari sur Mac et donnait une valeur invalide. Années illimitées (projets sur plusieurs années).
+ */
+export function MonthPicker({ value, onChange, placeholder = 'Choisir un mois', testid }: { value?: string; onChange: (v: string | undefined) => void; placeholder?: string; testid?: string }) {
+  const valid = !!value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+  const nowY = new Date().getFullYear();
+  const [open, setOpen] = useState(false);
+  const [year, setYear] = useState(valid ? Number(value!.slice(0, 4)) : nowY);
+  const label = valid ? `${MONTHS_LONG[Number(value!.slice(5, 7)) - 1]} ${value!.slice(0, 4)}` : placeholder;
+  return (
+    <div className="space-y-2" data-testid={testid}>
+      <div className="flex gap-2">
+        <button type="button" className={`input flex-1 text-left ${valid ? '' : 'text-soft'}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} data-testid={testid ? `${testid}-toggle` : undefined}>
+          {label}
+        </button>
+        {valid && (
+          <button type="button" className="icon-btn shrink-0" onClick={() => onChange(undefined)} aria-label="Effacer le mois">
+            <X size={16} />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="anim-rise rounded-2xl border border-line bg-card p-2">
+          <div className="mb-2 flex items-center justify-between">
+            <button type="button" className="icon-btn h-9 w-9" onClick={() => setYear((y) => y - 1)} aria-label="Année précédente">‹</button>
+            <span className="font-serif text-lg font-semibold text-plum" data-testid={testid ? `${testid}-year` : undefined}>{year}</span>
+            <button type="button" className="icon-btn h-9 w-9" onClick={() => setYear((y) => y + 1)} aria-label="Année suivante">›</button>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {MONTHS_SHORT.map((m, i) => {
+              const v = `${year}-${String(i + 1).padStart(2, '0')}`;
+              return (
+                <button
+                  type="button"
+                  key={m}
+                  className={`rounded-xl py-2.5 text-sm ${v === value ? 'bg-rasp font-semibold text-white' : 'text-ink hover:bg-blush'}`}
+                  onClick={() => {
+                    onChange(v);
+                    setOpen(false);
+                  }}
+                  aria-label={`${MONTHS_LONG[i]} ${year}`}
+                >
+                  {m}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Évite l'écran blanc : si une page plante, on l'affiche proprement sans toucher aux données. */
+export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: string }, { error?: Error }> {
+  state: { error?: Error } = {};
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error) {
+    console.error('Erreur d’affichage', error);
+  }
+  componentDidUpdate(prev: { resetKey?: string }) {
+    if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: undefined });
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="card mx-auto mt-10 max-w-md space-y-3 p-6 text-center" data-testid="error-boundary">
+        <div className="h-title text-2xl">Oups, cet écran a eu un souci</div>
+        <p className="text-sm text-soft">Tes données sont intactes. Tu peux revenir à l’accueil ou recharger l’application.</p>
+        <p className="break-words text-xs text-soft/70">{String(this.state.error.message || this.state.error)}</p>
+        <div className="flex justify-center gap-2">
+          <button className="btn-soft" onClick={() => { location.hash = '#/today'; this.setState({ error: undefined }); }}>Accueil</button>
+          <button className="btn-primary" onClick={() => location.reload()}>Recharger</button>
+        </div>
+      </div>
+    );
+  }
 }
 
 export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode }) {
@@ -207,7 +294,8 @@ let toasts: ToastMsg[] = [];
 const tsubs = new Set<() => void>();
 export function toast(text: string, action?: ToastMsg['action']) {
   const id = Date.now() + Math.random();
-  toasts = [...toasts, { id, text, action }];
+  // Un seul toast à la fois (le plus récent) : ils ne s'empilent plus par-dessus les formulaires.
+  toasts = [{ id, text, action }];
   tsubs.forEach((f) => f());
   setTimeout(() => {
     toasts = toasts.filter((t) => t.id !== id);

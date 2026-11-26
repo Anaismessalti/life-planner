@@ -56,10 +56,16 @@ export function weekday(s: ISODate) {
   return fromISO(s).getDay();
 }
 
+export const isISODate = (s: unknown): s is ISODate => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && toISO(fromISO(s)) === s;
+export const isISOMonth = (s: unknown): s is ISOMonth => typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
+
+/** Formatage tolérant : une date invalide ne fait jamais planter l'écran. */
 export function fmt(s: ISODate, pattern: string) {
+  if (!isISODate(s)) return '';
   return format(fromISO(s), pattern, { locale: fr });
 }
 export function fmtMonth(m: ISOMonth) {
+  if (!isISOMonth(m)) return '';
   const s = format(parseISO(`${m}-01`), 'LLLL yyyy', { locale: fr });
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

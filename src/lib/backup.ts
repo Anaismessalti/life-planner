@@ -1,3 +1,4 @@
+import { repairData } from './repair';
 import { db, getMeta, now, setMeta } from '../db/db';
 import { SYNC_TABLES, type BaseRecord, type TableName, type Task } from '../db/types';
 import { addMonths, monthEnd, monthOf, todayISO } from './dates';
@@ -51,13 +52,18 @@ export async function importBackup(text: string): Promise<number> {
     throw new Error("Ce fichier n'est pas une sauvegarde valide.");
   }
   if (data?.app !== 'life-planner' || !data.tables) throw new Error("Ce fichier n'est pas une sauvegarde du Life Planner.");
+  // Filet de sécurité : l'état actuel est gardé sur l'appareil avant d'être remplacé.
+  try {
+    await db.meta.put({ key: 'preImportBackup', value: { at: Date.now(), data: await exportAll() } });
+  } catch {}
   const t = now();
   let count = 0;
   await db.transaction('rw', [...SYNC_TABLES.map((n) => db.table_(n)), db.outbox], async () => {
     for (const name of SYNC_TABLES) {
       // Une table absente du fichier est laissée telle quelle (jamais effacée)
       if (!Array.isArray(data.tables[name])) continue;
-      const incoming = data.tables[name] as BaseRecord[];
+      // On ignore les lignes abîmées (sans identifiant) au lieu de faire échouer toute la restauration.
+      const incoming = (data.tables[name] as BaseRecord[]).filter((r) => r && typeof r === 'object' && typeof r.id === 'string' && r.id);
       const ids = new Set(incoming.map((r) => r.id));
       const table = db.table_(name as TableName);
       for (const cur of await table.toArray()) {
@@ -79,6 +85,7 @@ export async function importBackup(text: string): Promise<number> {
       }
     }
   });
+  await repairData();
   return count;
 }
 

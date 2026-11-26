@@ -81,7 +81,7 @@ export interface Category extends BaseRecord {
   order: number;
 }
 
-export type ProjectStatus = 'idea' | 'planned' | 'active' | 'paused' | 'done';
+export type ProjectStatus = 'idea' | 'planned' | 'active' | 'paused' | 'done' | 'abandoned';
 export interface Milestone {
   id: string;
   title: string;
@@ -98,6 +98,8 @@ export interface Project extends BaseRecord {
   milestones: Milestone[];
   notes?: string;
   status: ProjectStatus;
+  /** Progression chiffrée (montant, quantité) ou reliée à un objectif d'épargne, au lieu des étapes et tâches. */
+  measure?: { target: number; current: number; unit?: string; savingsId?: string };
 }
 
 export type Frequency = 'once' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
@@ -139,6 +141,8 @@ export interface Expense extends BaseRecord {
   budgetCategoryId?: string;
   date: ISODate;
   note?: string;
+  /** Dépense saisie depuis le journal (id = jx-date-trackerId : jamais de doublon). */
+  journal?: { date: ISODate; trackerId: string };
 }
 
 export interface BudgetCategory extends BaseRecord {
@@ -176,6 +180,7 @@ export interface Note extends BaseRecord {
   favorite: boolean;
 }
 
+export type TrackerForm = 'outing' | 'cafe' | 'work' | 'sport' | 'period' | 'pms' | 'rest' | 'travel' | 'spend' | 'simple';
 export type TrackerGroup = 'sorties' | 'moi' | 'cycle' | 'soin' | 'maison' | 'travail' | 'etudes' | 'autres';
 
 /** Une activité ou un état à suivre au quotidien (sortie, verre, bureau, congé…). */
@@ -186,6 +191,8 @@ export interface Tracker extends BaseRecord {
   order: number;
   /** Famille de statistiques : sorties, moi, travail, autres. */
   group: TrackerGroup;
+  /** Formulaire contextuel (avec qui, lieu, dépense, symptômes…). Par défaut : déduit de l'activité. */
+  form?: TrackerForm;
 }
 
 /** Une personne (amie, famille, animal) ou un lieu (bar, boîte, resto) à sélectionner dans le journal. */
@@ -197,14 +204,33 @@ export interface Contact extends BaseRecord {
   order: number;
 }
 
+/** Une activité de la journée. Les champs dépendent du formulaire de l'activité. Le montant vit dans le budget (Expense lié). */
+export interface DayItem {
+  trackerId: string;
+  /** Commentaire libre. */
+  detail?: string;
+  people?: string[];
+  places?: string[];
+  /** Café, sortie… en solo. */
+  alone?: boolean;
+  /** Flux des règles ou intensité (1 léger … 3 fort). */
+  level?: number;
+  /** Douleur des règles (0 aucune … 3 forte). */
+  pain?: number;
+  /** Symptômes, type de sport, ressenti… */
+  tags?: string[];
+}
+
 /** Journal d'une journée. id = date (YYYY-MM-DD) : jamais de doublon, même entre appareils. */
 export interface DayLog extends BaseRecord {
   date: ISODate;
   /** Note de la journée, de 1 à 5. */
   mood?: number;
   /** Activités cochées, avec un détail facultatif (« avec Léa », « chez Sarah »). */
-  items: { trackerId: string; detail?: string; people?: string[]; places?: string[] }[];
+  items: DayItem[];
   text?: string;
+  /** États du jour, plusieurs possibles (HENDAYE, tired, in love…), avec une intensité de 1 à 3. */
+  feelings?: { id: string; level: number }[];
 }
 
 export interface SettingRecord extends BaseRecord {

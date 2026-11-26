@@ -130,10 +130,17 @@ function same(a: unknown, b: unknown) {
 export async function create<T extends BaseRecord>(
   table: TableName,
   data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & { id?: string },
+  /** Pour une copie (occurrence d'une série) : seuls ces champs sont « récents », les autres gardent baseTs. */
+  opts?: { fresh: string[]; baseTs: number },
 ): Promise<T> {
   const t = now();
   const base = { ...data, id: data.id || uid(), createdAt: t, updatedAt: t } as unknown as T;
-  const rec = stamp(base, Object.keys(base), t);
+  let rec = stamp(base, Object.keys(base), t);
+  if (opts) {
+    const ts = { ...(rec._ts || {}) };
+    for (const k of Object.keys(ts)) if (!opts.fresh.includes(k)) ts[k] = Math.min(opts.baseTs, t);
+    rec = { ...rec, _ts: ts };
+  }
   await db.transaction('rw', db.table_(table), db.outbox, async () => {
     await db.table_(table).put(rec);
     await queue(table, rec);

@@ -1,14 +1,17 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Check, ChevronLeft, ChevronRight, MapPin, Plus, Settings as Cog, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, MapPin, Plus, Settings as Cog, Trash2, User } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Progress, Section } from '../components/ui';
+import { Section, Segmented, toast } from '../components/ui';
 import { create, db, upsert } from '../db/db';
-import type { Contact, DayLog, ISODate, Tracker } from '../db/types';
-import { WEEKDAYS_SHORT, addDays, addMonths, capitalize, fmt, fmtMonth, monthOf, monthStart, range, relativeDay, weekStart } from '../lib/dates';
+import type { Contact, DayItem, DayLog, ISODate, Tracker } from '../db/types';
+import { WEEKDAYS_SHORT, addDays, addMonths, capitalize, fmt, fmtMonth, isISODate, monthOf, monthStart, range, relativeDay, weekStart } from '../lib/dates';
+import { eur, parseAmount } from '../lib/finance';
 import { useToday } from '../lib/hooks';
 import { COLORS, Icon } from '../lib/icons';
-import { GROUP_LABEL, GROUP_ORDER, MOODS, monthJournal, topDetails } from '../lib/journal';
+import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
+import { FEELINGS, FORMS, formOf, setJournalExpense } from '../lib/lifeforms';
 import { navigate, useRoute } from '../lib/ui-store';
+import { AnalyticsView } from './Analytics';
 
 const EMPTY: never[] = [];
 
@@ -20,7 +23,6 @@ export function useDayLogs(): DayLog[] {
   const all = useLiveQuery(() => db.daylogs.toArray(), [], EMPTY);
   return useMemo(() => all.filter((l) => !l.deleted), [all]);
 }
-
 export function useContacts(): Contact[] {
   const all = useLiveQuery(() => db.contacts.orderBy('order').toArray(), [], EMPTY);
   return useMemo(() => all.filter((c) => !c.deleted), [all]);
@@ -34,17 +36,31 @@ export async function addContact(name: string, kind: Contact['kind'], existing: 
   return create<Contact>('contacts', { name: clean, kind, icon: kind === 'place' ? 'martini' : 'users', color: COLORS[order % COLORS.length], order } as any);
 }
 
-export async function saveLog(date: ISODate, patch: Partial<DayLog>) {
-  const cur = await db.daylogs.get(date);
-  await upsert<DayLog>('daylogs', { id: date, date, items: cur && !cur.deleted ? cur.items : [], ...(cur && !cur.deleted ? { mood: cur.mood, text: cur.text } : {}), ...patch });
+/**
+ * Modifie la journée à partir de son état ENREGISTRÉ (et pas de l'écran) : les modifications rapides
+ * s'enchaînent dans l'ordre, sans qu'un toucher n'efface le précédent.
+ */
+let chain: Promise<unknown> = Promise.resolve();
+export function saveLog(date: ISODate, patch: Partial<DayLog> | ((cur: DayLog) => Partial<DayLog>)) {
+  chain = chain
+    .then(async () => {
+      const found = await db.daylogs.get(date);
+      const cur: DayLog = found && !found.deleted ? found : ({ id: date, date, items: [], createdAt: 0, updatedAt: 0 } as DayLog);
+      const p = typeof patch === 'function' ? patch(cur) : patch;
+      if (!Object.keys(p).length) return;
+      const { createdAt: _c, updatedAt: _u, _ts, deleted: _d, ...rest } = cur;
+      await upsert<DayLog>('daylogs', { ...rest, id: date, date, items: cur.items || [], ...p });
+    })
+    .catch((e) => console.error('Journal', e));
+  return chain;
 }
 
-/** Petite bulle de couleur, de plus en plus lumineuse avec l'humeur. */
+/** Petite perle de couleur, de plus en plus lumineuse avec l'humeur. */
 export function MoodOrb({ color, level, size = 30 }: { color: string; level: number; size?: number }) {
   return (
     <span
       aria-hidden
-      className="block rounded-full"
+      className="block shrink-0 rounded-full"
       style={{
         width: size,
         height: size,
@@ -66,7 +82,7 @@ export function MoodPicker({ date, value, size = 'md' }: { date: ISODate; value?
             role="radio"
             aria-checked={on}
             onClick={() => saveLog(date, { mood: on ? undefined : m.value })}
-            className={`flex flex-1 flex-col items-center gap-0.5 rounded-2xl py-2 transition active:scale-95 ${on ? 'bg-card shadow-soft ring-2' : 'opacity-70 hover:opacity-100'}`}
+            className={`flex min-h-[64px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-2 transition active:scale-95 ${on ? 'bg-card shadow-soft ring-2' : 'opacity-70 hover:opacity-100'}`}
             style={on ? ({ '--tw-ring-color': m.color } as React.CSSProperties) : undefined}
             data-testid={`mood-${m.value}`}
           >
@@ -79,97 +95,210 @@ export function MoodPicker({ date, value, size = 'md' }: { date: ISODate; value?
   );
 }
 
+/** États du jour : plusieurs à la fois. Toucher une fois = léger, deux fois = moyen, trois = fort, quatre = retiré. */
+export function FeelingsPicker({ date, value }: { date: ISODate; value?: DayLog['feelings'] }) {
+  const cur = value || [];
+  const tap = (id: string) =>
+    saveLog(date, (log) => {
+      const list = log.feelings || [];
+      const f = list.find((x) => x.id === id);
+      if (!f) return { feelings: [...list, { id, level: 1 }] };
+      if (f.level >= 3) return { feelings: list.filter((x) => x.id !== id) };
+      return { feelings: list.map((x) => (x.id === id ? { ...x, level: x.level + 1 } : x)) };
+    });
+  return (
+    <div className="flex flex-wrap gap-1.5" data-testid="feelings">
+      {FEELINGS.map((f) => {
+        const on = cur.find((x) => x.id === f.id);
+        return (
+          <button
+            key={f.id}
+            onClick={() => tap(f.id)}
+            className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 py-1.5 transition active:scale-95 ${on ? 'text-white shadow-soft' : 'bg-blush/60 text-plum'} ${
+              f.id === 'hendaye' ? 'text-[12px] font-semibold tracking-[0.12em]' : 'font-serif text-[15px] italic'
+            }`}
+            style={on ? { background: f.color } : undefined}
+            aria-pressed={!!on}
+            aria-label={`${f.label}${on ? `, intensité ${on.level} sur 3` : ''}`}
+            data-testid={`feeling-${f.id}`}
+          >
+            {f.label}
+            {on && (
+              <span className="flex gap-0.5" aria-hidden>
+                {[1, 2, 3].map((i) => (
+                  <span key={i} className={`h-1.5 w-1.5 rounded-full bg-white ${i <= on.level ? '' : 'opacity-30'}`} />
+                ))}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function JournalPage() {
   const today = useToday();
   const { param } = useRoute();
-  const [date, setDate] = useState<ISODate>(param && /^\d{4}-\d{2}-\d{2}$/.test(param) ? param : today);
-  const [month, setMonth] = useState(monthOf(date));
-  const [focus, setFocus] = useState<string | null>(null);
+  const [tab, setTab] = useState<'day' | 'stats'>(param === 'stats' ? 'stats' : 'day');
+  const [date, setDate] = useState<ISODate>(isISODate(param) && param! <= today ? param! : today);
   const trackers = useTrackers();
   const contacts = useContacts();
   const logs = useDayLogs();
   const log = logs.find((l) => l.id === date);
   const topRef = useRef<HTMLDivElement>(null);
-  useEffect(() => setMonth(monthOf(date)), [date]);
+  useEffect(() => {
+    if (param === 'stats') setTab('stats');
+    else if (isISODate(param) && param <= today) {
+      setTab('day');
+      setDate(param);
+    }
+  }, [param]);
 
   return (
-    <div className="space-y-7" ref={topRef}>
+    <div className="space-y-6" ref={topRef}>
       <header className="anim-rise flex items-start justify-between gap-3">
         <div>
           <p className="label">Mon journal</p>
-          <h1 className="h-title text-4xl">Mes journées</h1>
+          <h1 className="h-title text-4xl">{tab === 'day' ? 'Mes journées' : 'Life Analytics'}</h1>
         </div>
         <button className="icon-btn md:hidden" onClick={() => navigate('settings')} aria-label="Paramètres">
           <Cog size={20} />
         </button>
       </header>
+      <Segmented
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'day', label: 'Ma journée' },
+          { value: 'stats', label: 'Mes stats' },
+        ]}
+        className="w-full"
+      />
 
-      <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <DayEditor date={date} setDate={setDate} today={today} log={log} trackers={trackers} contacts={contacts} />
-        <MonthReview
-          month={month}
-          setMonth={setMonth}
-          logs={logs}
-          trackers={trackers}
-          contacts={contacts}
-          focus={focus}
-          setFocus={setFocus}
-          selected={date}
-          onPick={(d) => {
-            setDate(d);
-            topRef.current?.scrollIntoView({ behavior: 'smooth' });
-          }}
-          today={today}
-        />
-      </div>
+      {tab === 'day' ? (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
+          <DayEditor date={date} setDate={setDate} today={today} log={log} trackers={trackers} contacts={contacts} />
+          <MonthCalendar
+            logs={logs}
+            selected={date}
+            today={today}
+            onPick={(d) => {
+              setDate(d);
+              topRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }}
+          />
+        </div>
+      ) : (
+        <AnalyticsView logs={logs} trackers={trackers} contacts={contacts} today={today} />
+      )}
     </div>
   );
+}
+
+function itemSummary(it: DayItem, t: Tracker, names: Map<string, string>, amount?: number) {
+  const spec = FORMS[formOf(t)];
+  const bits: string[] = [];
+  if (it.alone) bits.push('seule');
+  bits.push(...[...(it.people || []), ...(it.places || [])].map((id) => names.get(id) || '').filter(Boolean));
+  if (spec.level && it.level) bits.push(spec.level.options[it.level - 1]?.toLowerCase() || '');
+  if (spec.pain && it.pain) bits.push(`douleurs ${spec.pain.options[it.pain]?.toLowerCase() || ''}`);
+  if (it.tags?.length) bits.push(...it.tags.map((x) => x.toLowerCase()));
+  if (amount) bits.push(eur(amount));
+  if (it.detail) bits.push(it.detail);
+  return bits.filter(Boolean).join(', ');
 }
 
 function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: ISODate; setDate: (d: ISODate) => void; today: ISODate; log?: DayLog; trackers: Tracker[]; contacts: Contact[] }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState(log?.text || '');
   const items = log?.items || [];
-  useEffect(() => setText(log?.text || ''), [date, log?.id]);
+  const dayExpenses = useLiveQuery(() => db.expenses.where('date').equals(date).toArray(), [date], EMPTY);
+  const amounts = useMemo(() => new Map(dayExpenses.filter((e) => !e.deleted && e.journal).map((e) => [e.journal!.trackerId, e.amount])), [dayExpenses]);
+  // Texte du jour : enregistré après une courte pause, et TOUJOURS avant de changer de jour ou de page.
+  const pending = useRef<{ date: ISODate; text: string } | null>(null);
+  const flush = () => {
+    const p = pending.current;
+    pending.current = null;
+    if (p) saveLog(p.date, { text: p.text.trim() ? p.text : undefined });
+  };
   useEffect(() => {
-    if (text === (log?.text || '')) return;
-    const t = setTimeout(() => saveLog(date, { text: text || undefined }), 500);
+    flush();
+    setText(log?.text || '');
+    setEditing(null);
+  }, [date]);
+  useEffect(() => {
+    if (!pending.current) setText(log?.text || '');
+  }, [log?.text]);
+  useEffect(() => {
+    if (!pending.current) return;
+    const t = setTimeout(flush, 500);
     return () => clearTimeout(t);
   }, [text]);
+  useEffect(() => {
+    const v = () => document.visibilityState === 'hidden' && flush();
+    document.addEventListener('visibilitychange', v);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', v);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, []);
 
   const toggle = (t: Tracker) => {
     const has = items.find((i) => i.trackerId === t.id);
     if (!has) {
-      saveLog(date, { items: [...items, { trackerId: t.id }] });
+      saveLog(date, (cur) => (cur.items.some((i) => i.trackerId === t.id) ? {} : { items: [...cur.items, { trackerId: t.id }] }));
       setEditing(t.id);
     } else setEditing(editing === t.id ? null : t.id);
   };
-  const patchItem = (id: string, p: Partial<DayLog['items'][number]>) => saveLog(date, { items: items.map((i) => (i.trackerId === id ? { ...i, ...p } : i)) });
+  const patchItem = (id: string, p: Partial<DayItem>) => saveLog(date, (cur) => ({ items: cur.items.map((i) => (i.trackerId === id ? { ...i, ...p } : i)) }));
   const names = useMemo(() => new Map(contacts.map((c) => [c.id, c.name])), [contacts]);
-  const removeItem = (id: string) => {
-    saveLog(date, { items: items.filter((i) => i.trackerId !== id) });
+  const removeItem = async (t: Tracker) => {
+    await saveLog(date, (cur) => ({ items: cur.items.filter((i) => i.trackerId !== t.id) }));
+    await setJournalExpense(date, t, undefined, undefined, contacts);
     setEditing(null);
   };
   const groups = GROUP_ORDER.map((g) => ({ g, list: trackers.filter((t) => (t.group || 'autres') === g) })).filter((x) => x.list.length);
+  const filled = items.filter((i) => trackers.some((t) => t.id === i.trackerId)).length;
 
   return (
-    <div className="card anim-rise space-y-5 p-4">
+    <div className="card anim-rise space-y-5 p-4" data-testid="day-editor">
       <div className="flex items-center justify-between">
         <button className="icon-btn" onClick={() => setDate(addDays(date, -1))} aria-label="Jour précédent">
           <ChevronLeft size={20} />
         </button>
         <div className="text-center">
-          <div className="font-serif text-2xl font-semibold text-plum">{relativeDay(date, today)}</div>
-          <div className="text-xs text-soft">{capitalize(fmt(date, 'EEEE d MMMM'))}</div>
+          <div className="font-serif text-2xl font-semibold text-plum" data-testid="day-title">
+            {relativeDay(date, today)}
+          </div>
+          <div className="text-xs text-soft">
+            {capitalize(fmt(date, 'EEEE d MMMM yyyy'))}
+            {filled > 0 && ` · ${filled} activité${filled > 1 ? 's' : ''}`}
+          </div>
         </div>
         <button className="icon-btn" onClick={() => setDate(addDays(date, 1))} disabled={date >= today} aria-label="Jour suivant">
           <ChevronRight size={20} />
         </button>
       </div>
+      {date < today && (
+        <button className="mx-auto -mt-3 block text-xs text-rasp" onClick={() => setDate(today)}>
+          Revenir à aujourd'hui
+        </button>
+      )}
 
       <div className="space-y-2">
         <div className="label">Mood of the day</div>
         <MoodPicker date={date} value={log?.mood} />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+          <div className="label">Mes états du jour</div>
+          <div className="text-[11px] text-soft">plusieurs possibles · retoucher = plus intense</div>
+        </div>
+        <FeelingsPicker date={date} value={log?.feelings} />
       </div>
 
       {groups.map(({ g, list }) => (
@@ -178,10 +307,11 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
           <div className="flex flex-wrap gap-2">
             {list.map((t) => {
               const it = items.find((i) => i.trackerId === t.id);
+              const sum = it ? itemSummary(it, t, names, amounts.get(t.id)) : '';
               return (
                 <button
                   key={t.id}
-                  className={`chip ${it ? 'border-transparent text-white shadow-soft' : ''}`}
+                  className={`chip min-h-[38px] ${it ? 'border-transparent text-white shadow-soft' : ''} ${editing === t.id ? 'ring-2 ring-plum ring-offset-1' : ''}`}
                   style={it ? { background: t.color } : undefined}
                   onClick={() => toggle(t)}
                   aria-pressed={!!it}
@@ -189,21 +319,21 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
                 >
                   <Icon name={t.icon} size={14} />
                   {t.name}
-                  {it && (it.people?.length || it.places?.length || it.detail) ? (
-                    <span className="max-w-[12rem] truncate opacity-90">
-                      · {[...(it.people || []), ...(it.places || [])].map((id) => names.get(id)).filter(Boolean).concat(it.detail ? [it.detail] : []).join(', ')}
-                    </span>
-                  ) : null}
+                  {sum && <span className="max-w-[13rem] truncate opacity-90">· {sum}</span>}
                 </button>
               );
             })}
           </div>
           {editing && list.some((t) => t.id === editing) && items.some((i) => i.trackerId === editing) && (
-            <WithWhom
+            <ItemPanel
+              key={`${date}-${editing}`}
+              date={date}
+              tracker={list.find((t) => t.id === editing)!}
               item={items.find((i) => i.trackerId === editing)!}
+              amount={amounts.get(editing)}
               contacts={contacts}
               onChange={(p) => patchItem(editing, p)}
-              onRemove={() => removeItem(editing)}
+              onRemove={() => removeItem(list.find((t) => t.id === editing)!)}
               onDone={() => setEditing(null)}
             />
           )}
@@ -212,36 +342,54 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
 
       <div className="space-y-2">
         <div className="label">En quelques mots</div>
-        <textarea className="input min-h-[90px]" placeholder="Un souvenir, une pensée, ce qui t'a fait sourire…" value={text} onChange={(e) => setText(e.target.value)} aria-label="Texte du jour" />
+        <textarea className="input min-h-[90px]" placeholder="Un souvenir, une pensée, ce qui t'a fait sourire…" value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            pending.current = { date, text: e.target.value };
+          }}
+          onBlur={flush}
+          aria-label="Texte du jour"
+          data-testid="day-text"
+        />
       </div>
-      <p className="text-center text-xs text-soft">Enregistré automatiquement · tu peux ajouter ou renommer tes suivis dans Paramètres</p>
+      <p className="text-center text-xs text-soft">Enregistré automatiquement · tu peux compléter n'importe quel jour passé · activités modifiables dans Paramètres</p>
     </div>
   );
 }
 
-/** Sélection des personnes et des lieux par pastilles, avec ajout immédiat d'un nouveau nom. */
-function WithWhom({
+/** Les champs de l'activité : seulement ceux qui ont du sens pour elle (avec qui, lieu, dépense, symptômes…). */
+function ItemPanel({
+  date,
+  tracker,
   item,
+  amount,
   contacts,
   onChange,
   onRemove,
   onDone,
 }: {
-  item: DayLog['items'][number];
+  date: ISODate;
+  tracker: Tracker;
+  item: DayItem;
+  amount?: number;
   contacts: Contact[];
-  onChange: (p: Partial<DayLog['items'][number]>) => void;
+  onChange: (p: Partial<DayItem>) => void;
   onRemove: () => void;
   onDone: () => void;
 }) {
+  const spec = FORMS[formOf(tracker)];
   const [adding, setAdding] = useState<Contact['kind'] | null>(null);
   const [name, setName] = useState('');
+  const fmtA = (a?: number) => (a ? String(a).replace('.', ',') : '');
+  const [amountText, setAmountText] = useState(fmtA(amount));
   const busy = useRef(false);
+  useEffect(() => setAmountText(fmtA(amount)), [amount]);
   const people = contacts.filter((c) => c.kind === 'person');
   const places = contacts.filter((c) => c.kind === 'place');
   const key = (k: Contact['kind']) => (k === 'person' ? 'people' : 'places') as 'people' | 'places';
   const toggle = (c: Contact) => {
     const cur = item[key(c.kind)] || [];
-    onChange({ [key(c.kind)]: cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id] });
+    onChange({ [key(c.kind)]: cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id], ...(c.kind === 'person' ? { alone: undefined } : {}) });
   };
   const submit = async () => {
     if (busy.current) return;
@@ -250,27 +398,41 @@ function WithWhom({
     try {
       const c = await addContact(name, adding, contacts);
       const cur = item[key(adding)] || [];
-      if (!cur.includes(c.id)) onChange({ [key(adding)]: [...cur, c.id] });
+      if (!cur.includes(c.id)) onChange({ [key(adding)]: [...cur, c.id], ...(adding === 'person' ? { alone: undefined } : {}) });
       setName('');
       setAdding(null);
     } finally {
       busy.current = false;
     }
   };
+  const saveAmount = async () => {
+    const txt = amountText.trim();
+    const v = txt ? parseAmount(txt) : undefined;
+    if (txt && (v === undefined || v < 0)) {
+      toast('Montant non reconnu (ex : 12,50)');
+      return;
+    }
+    if ((v || undefined) === (amount || undefined)) return;
+    await setJournalExpense(date, tracker, v, item, contacts);
+    if (v) toast(`${eur(v)} ajoutés au budget (${tracker.name})`);
+  };
+
+  const pill = (on: boolean) => `inline-flex min-h-[34px] items-center gap-1 rounded-full px-3 py-1.5 text-sm transition active:scale-95 ${on ? 'bg-plum text-white shadow-soft' : 'bg-card text-ink/80'}`;
+  const sub = 'text-[11px] font-medium uppercase tracking-wider text-soft';
+
   const row = (kind: Contact['kind'], list: Contact[], label: string) => (
     <div className="space-y-1.5">
-      <div className="text-[11px] font-medium uppercase tracking-wider text-soft">{label}</div>
+      <div className={sub}>{label}</div>
       <div className="flex flex-wrap gap-1.5">
+        {kind === 'person' && spec.alone && (
+          <button onClick={() => onChange({ alone: item.alone ? undefined : true, people: item.alone ? item.people : [] })} className={pill(!!item.alone)} aria-pressed={!!item.alone} data-testid="alone">
+            <User size={13} /> Seule
+          </button>
+        )}
         {list.map((c) => {
           const on = (item[key(kind)] || []).includes(c.id);
           return (
-            <button
-              key={c.id}
-              onClick={() => toggle(c)}
-              className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm transition active:scale-95 ${on ? 'bg-plum text-white shadow-soft' : 'bg-card text-ink/80'}`}
-              aria-pressed={on}
-              data-testid={`contact-${c.id}`}
-            >
+            <button key={c.id} onClick={() => toggle(c)} className={pill(on)} aria-pressed={on} data-testid={`contact-${c.id}`}>
               {on && <Check size={13} strokeWidth={3} />}
               {kind === 'place' && !on && <MapPin size={12} />}
               {c.name}
@@ -287,8 +449,8 @@ function WithWhom({
           >
             <input
               autoFocus
-              className="input w-36 py-1.5 text-sm"
-              placeholder={kind === 'person' ? 'Prénom' : 'Nom du bar, de la boîte…'}
+              className="input w-40 py-1.5"
+              placeholder={kind === 'person' ? 'Prénom' : 'Nom du lieu'}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onBlur={submit}
@@ -296,33 +458,90 @@ function WithWhom({
             />
           </form>
         ) : (
-          <button
-            onClick={() => setAdding(kind)}
-            className="inline-flex items-center gap-1 rounded-full border border-dashed border-mauve px-3 py-1.5 text-sm text-plum"
-            data-testid={`add-${kind}`}
-          >
+          <button onClick={() => setAdding(kind)} className="inline-flex min-h-[34px] items-center gap-1 rounded-full border border-dashed border-mauve px-3 py-1.5 text-sm text-plum" data-testid={`add-${kind}`}>
             <Plus size={13} /> {kind === 'person' ? 'Quelqu’un' : 'Un lieu'}
           </button>
         )}
       </div>
     </div>
   );
+  const choice = (field: 'level' | 'pain', conf: { label: string; options: string[] }, offset: number) => (
+    <div className="space-y-1.5">
+      <div className={sub}>{conf.label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {conf.options.map((o, i) => {
+          const v = i + offset;
+          const on = item[field] === v;
+          return (
+            <button key={o} onClick={() => onChange({ [field]: on ? undefined : v })} className={pill(on)} aria-pressed={on} data-testid={`${field}-${v}`}>
+              {o}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="anim-rise space-y-3 rounded-2xl bg-blush/50 p-3">
-      {row('person', people, 'Avec qui ?')}
-      {row('place', places, 'Où ?')}
+    <div className="anim-rise space-y-3 rounded-2xl bg-blush/50 p-3" data-testid="item-panel">
+      {spec.people && row('person', people, 'Avec qui ?')}
+      {spec.places && row('place', places, spec.placesLabel || 'Où ?')}
+      {spec.level && choice('level', spec.level, 1)}
+      {spec.pain && choice('pain', spec.pain, 0)}
+      {spec.tags && (
+        <div className="space-y-1.5">
+          <div className={sub}>{spec.tags.label}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {spec.tags.options.map((o) => {
+              const on = (item.tags || []).includes(o);
+              return (
+                <button
+                  key={o}
+                  onClick={() => onChange({ tags: on ? (item.tags || []).filter((x) => x !== o) : [...(item.tags || []), o] })}
+                  className={pill(on)}
+                  aria-pressed={on}
+                  data-testid={`tag-${o}`}
+                >
+                  {on && <Check size={12} strokeWidth={3} />}
+                  {o}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {spec.amount && (
+        <div className="space-y-1.5">
+          <div className={sub}>Dépense (ajoutée au budget)</div>
+          <div className="flex items-center gap-2">
+            <input
+              className="input w-32"
+              inputMode="decimal"
+              placeholder="0,00 €"
+              value={amountText}
+              onChange={(e) => setAmountText(e.target.value)}
+              onBlur={saveAmount}
+              onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+              aria-label="Dépense"
+              data-testid="item-amount"
+            />
+            <span className="text-xs text-soft">{amount ? 'visible dans Budget → Variables' : 'facultatif'}</span>
+          </div>
+        </div>
+      )}
       <input
-        className="input py-2 text-sm"
-        placeholder="Autre précision (facultatif)"
+        className="input py-2"
+        placeholder={spec.comment}
         defaultValue={item.detail || ''}
         onBlur={(e) => onChange({ detail: e.target.value.trim() || undefined })}
-        aria-label="Précision"
+        aria-label="Commentaire"
+        data-testid="item-comment"
       />
       <div className="flex gap-2">
-        <button className="btn-soft px-3 py-1.5 text-xs" onClick={onRemove}>
-          <X size={14} /> Retirer l'activité
+        <button className="btn-soft px-3 py-2 text-xs" onClick={onRemove} data-testid="item-remove">
+          <Trash2 size={14} /> Retirer
         </button>
-        <button className="btn-primary ml-auto px-4 py-1.5 text-xs" onClick={onDone} data-testid="with-done">
+        <button className="btn-primary ml-auto px-5 py-2 text-xs" onClick={onDone} data-testid="with-done">
           OK
         </button>
       </div>
@@ -330,84 +549,28 @@ function WithWhom({
   );
 }
 
-function MonthReview({
-  month,
-  setMonth,
-  logs,
-  trackers,
-  contacts,
-  focus,
-  setFocus,
-  selected,
-  onPick,
-  today,
-}: {
-  month: string;
-  setMonth: (m: string) => void;
-  logs: DayLog[];
-  trackers: Tracker[];
-  contacts: Contact[];
-  focus: string | null;
-  setFocus: (id: string | null) => void;
-  selected: ISODate;
-  onPick: (d: ISODate) => void;
-  today: ISODate;
-}) {
-  const s = useMemo(() => monthJournal(logs, trackers, month, contacts), [logs, trackers, month, contacts]);
+/** Calendrier du mois coloré par humeur : sert à choisir un jour à compléter ou à modifier. */
+function MonthCalendar({ logs, selected, today, onPick }: { logs: DayLog[]; selected: ISODate; today: ISODate; onPick: (d: ISODate) => void }) {
+  const [month, setMonth] = useState(monthOf(selected));
+  useEffect(() => setMonth(monthOf(selected)), [selected]);
   const byDate = useMemo(() => new Map(logs.map((l) => [l.date, l])), [logs]);
   const gridStart = weekStart(monthStart(month));
   const days = range(gridStart, addDays(gridStart, 41));
-  const mood = s.moodAvg ? MOODS[Math.round(s.moodAvg) - 1] : undefined;
-  const pick = (id: string) => s.perTracker.find((p) => p.tracker.id === id);
-  const highlight = [
-    { label: 'Jours de sortie', value: s.perGroup.sorties },
-    { label: 'Alcool', value: pick('tr-alcool')?.days },
-    { label: 'Dérive', value: pick('tr-derive')?.days },
-    { label: 'Hendaye', value: pick('tr-hendaye')?.days },
-    { label: 'Règles', value: pick('tr-regles')?.days },
-    { label: 'Ménage', value: pick('tr-menage')?.days },
-    { label: 'Skincare', value: pick('tr-skincare')?.days },
-  ].filter((h, i) => h.value !== undefined && (i < 3 || (h.value || 0) > 0));
-  const maxDays = Math.max(1, ...s.perTracker.map((p) => p.days));
-
   return (
     <Section
-      title={`Bilan de ${fmtMonth(month).split(' ')[0].toLowerCase()}`}
+      title={fmtMonth(month)}
       action={
         <div className="flex">
-          <button className="icon-btn h-9 w-9" onClick={() => setMonth(addMonths(month, -1))} aria-label="Mois précédent">
+          <button className="icon-btn h-10 w-10" onClick={() => setMonth(addMonths(month, -1))} aria-label="Mois précédent">
             <ChevronLeft size={18} />
           </button>
-          <button className="icon-btn h-9 w-9" onClick={() => setMonth(addMonths(month, 1))} aria-label="Mois suivant">
+          <button className="icon-btn h-10 w-10" onClick={() => setMonth(addMonths(month, 1))} aria-label="Mois suivant">
             <ChevronRight size={18} />
           </button>
         </div>
       }
     >
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="card p-3">
-          <div className="label">Humeur moyenne</div>
-          <div className="mt-1 flex items-center gap-1.5 font-serif text-2xl font-semibold text-plum" data-testid="mood-avg">
-            {mood ? (
-              <>
-                <MoodOrb color={mood.color} level={mood.value} size={22} /> <span className="italic">{mood.label}</span> <span className="font-sans text-xs font-normal text-soft">{String(s.moodAvg).replace('.', ',')}/5</span>
-              </>
-            ) : (
-              '—'
-            )}
-          </div>
-        </div>
-        {highlight.map((h) => (
-          <div key={h.label} className="card p-3">
-            <div className="label">{h.label}</div>
-            <div className="mt-1 font-serif text-2xl font-semibold text-plum" data-testid={`stat-${h.label}`}>
-              {h.value} <span className="font-sans text-xs font-normal text-soft">jour{(h.value || 0) > 1 ? 's' : ''}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="card p-3">
+      <div className="card p-3" data-testid="month-calendar">
         <div className="grid grid-cols-7 pb-1 text-center">
           {WEEKDAYS_SHORT.map((w) => (
             <div key={w} className="label py-1 text-[10px]">
@@ -420,20 +583,20 @@ function MonthReview({
             const l = byDate.get(d);
             const m = l?.mood ? MOODS[l.mood - 1] : undefined;
             const out = monthOf(d) !== month;
-            const hit = focus && l?.items.some((i) => i.trackerId === focus || i.people?.includes(focus) || i.places?.includes(focus));
             const future = d > today;
+            const hend = l?.feelings?.some((f) => f.id === 'hendaye');
             return (
               <button
                 key={d}
                 disabled={future}
                 onClick={() => onPick(d)}
-                className={`relative flex aspect-square flex-col items-center justify-center rounded-xl text-xs transition ${out ? 'opacity-30' : ''} ${
-                  d === selected ? 'ring-2 ring-plum' : ''
-                } ${focus && !hit ? 'opacity-25' : ''} ${future ? 'opacity-40' : ''}`}
-                style={{ background: m ? `${m.color}${hit || !focus ? '' : '55'}` : 'rgb(var(--c-blush) / 0.5)', color: m && m.value >= 4 ? '#fff' : undefined }}
+                className={`relative flex aspect-square flex-col items-center justify-center rounded-xl text-xs transition ${out ? 'opacity-30' : ''} ${d === selected ? 'ring-2 ring-plum' : ''} ${future ? 'opacity-40' : ''}`}
+                style={{ background: m ? m.color : 'rgb(var(--c-blush) / 0.5)', color: m && m.value >= 4 ? '#fff' : undefined }}
                 aria-label={`${fmt(d, 'd MMMM')}${m ? ' · ' + m.label : ''}`}
+                data-testid={`cal-${d}`}
               >
                 <span className="font-semibold">{Number(d.slice(8))}</span>
+                {hend && <span className="absolute right-1 top-0.5 text-[8px] font-bold">H</span>}
                 {l && l.items.length > 0 && (
                   <span className="absolute bottom-1 flex gap-0.5">
                     {l.items.slice(0, 3).map((i) => (
@@ -452,56 +615,11 @@ function MonthReview({
               <span className="font-serif text-[13px] italic">{m.label}</span>
             </span>
           ))}
+          <span className="inline-flex items-center gap-1">
+            <span className="text-[9px] font-bold">H</span> HENDAYE
+          </span>
         </div>
-      </div>
-
-      {s.perContact.length > 0 && (
-        <div className="card space-y-2 p-3">
-          <div className="label">Avec qui et où</div>
-          <div className="flex flex-wrap gap-1.5">
-            {s.perContact.map(({ contact: c, days: n }) => (
-              <button
-                key={c.id}
-                onClick={() => setFocus(focus === c.id ? null : c.id)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition ${focus === c.id ? 'bg-plum text-white' : 'bg-blush/70 text-plum'}`}
-                data-testid={`people-count-${c.id}`}
-              >
-                {c.kind === 'place' && <MapPin size={12} />}
-                {c.name}
-                <span className="font-semibold">{n}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-1.5">
-        <p className="text-xs text-soft">
-          {s.daysLogged} jour{s.daysLogged > 1 ? 's' : ''} renseigné{s.daysLogged > 1 ? 's' : ''}. Touche une activité pour la voir dans le calendrier.
-        </p>
-        {s.perTracker.filter((p) => p.days > 0).map(({ tracker: t, days: n, details }) => {
-          const top = topDetails(details);
-          return (
-            <button
-              key={t.id}
-              onClick={() => setFocus(focus === t.id ? null : t.id)}
-              className={`w-full space-y-1 rounded-2xl px-3 py-2 text-left transition ${focus === t.id ? 'bg-card shadow-soft' : 'hover:bg-blush/40'} ${n ? '' : 'opacity-50'}`}
-              data-testid={`count-${t.id}`}
-            >
-              <div className="flex items-center gap-2 text-sm">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full text-white" style={{ background: t.color }}>
-                  <Icon name={t.icon} size={14} />
-                </span>
-                <span className="flex-1">{t.name}</span>
-                <span className="font-semibold text-plum">
-                  {n} jour{n > 1 ? 's' : ''}
-                </span>
-              </div>
-              {n > 0 && <Progress value={(n / maxDays) * 100} className="h-1.5" color={t.color} />}
-              {top.length > 0 && <div className="text-[11px] text-soft">Le plus souvent : {top.map(([k, c]) => `${k} (${c})`).join(', ')}</div>}
-            </button>
-          );
-        })}
+        <p className="mt-2 text-center text-[11px] text-soft">Touche un jour pour le compléter ou le modifier.</p>
       </div>
     </Section>
   );

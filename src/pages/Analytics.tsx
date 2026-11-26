@@ -1,0 +1,568 @@
+import { useLiveQuery } from 'dexie-react-hooks';
+import { ChevronLeft, ChevronRight, MapPin, TrendingDown, TrendingUp } from 'lucide-react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Progress, Section, Segmented } from '../components/ui';
+import { db } from '../db/db';
+import type { Contact, DayLog, ISODate, Tracker, TrackerGroup } from '../db/types';
+import { WEEKDAYS_SHORT, addDays, fmt, monthOf, range, weekStart } from '../lib/dates';
+import { analyze, fmtPct, periodOf, shiftPeriod, trend, type Analytics, type Count, type PeriodKind } from '../lib/analytics';
+import { eur } from '../lib/finance';
+import { Icon } from '../lib/icons';
+import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
+
+const EMPTY: never[] = [];
+const GROUP_COLOR: Record<TrackerGroup, string> = {
+  sorties: '#A83278',
+  moi: '#D46A8C',
+  cycle: '#C0395A',
+  soin: '#E0789E',
+  maison: '#C7A0C9',
+  travail: '#81265D',
+  etudes: '#8E6BB0',
+  autres: '#9C8A96',
+};
+
+/** Anneau SVG : chaque part = une valeur. */
+function Donut({ parts, size = 132, center }: { parts: { value: number; color: string; label: string }[]; size?: number; center?: ReactNode }) {
+  const total = parts.reduce((a, b) => a + b.value, 0);
+  const r = size / 2 - 12;
+  const C = 2 * Math.PI * r;
+  let acc = 0;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90" role="img" aria-label={parts.map((p) => `${p.label} ${p.value}`).join(', ')}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(var(--c-blush))" strokeWidth={16} />
+        {total > 0 &&
+          parts
+            .filter((p) => p.value > 0)
+            .map((p) => {
+              const len = (p.value / total) * C;
+              const el = (
+                <circle key={p.label} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={p.color} strokeWidth={16} strokeDasharray={`${Math.max(0, len - 2)} ${C}`} strokeDashoffset={-acc} />
+              );
+              acc += len;
+              return el;
+            })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">{center}</div>
+    </div>
+  );
+}
+
+function Bars({ data, color = 'rgb(var(--c-rasp))', format = (v: number) => String(v), testid }: { data: { label: string; value: number }[]; color?: string; format?: (v: number) => string; testid?: string }) {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  return (
+    <div className="flex h-36 items-end gap-1.5" data-testid={testid}>
+      {data.map((d, i) => (
+        <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+          <div className="text-[10px] font-semibold text-plum">{d.value ? format(d.value) : ''}</div>
+          <div className="w-full rounded-t-lg transition-all duration-700" style={{ height: `${Math.max(3, (d.value / max) * 96)}px`, background: color, opacity: i === data.length - 1 ? 1 : 0.55 }} />
+          <div className="max-w-full truncate text-[10px] text-soft">{d.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Delta({ cur, prev, unit = 'j' }: { cur: number; prev: number; unit?: string }) {
+  const d = Math.round((cur - prev) * 10) / 10;
+  if (!d) return <span className="text-[10px] text-soft">= période préc.</span>;
+  const up = d > 0;
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[10px] text-soft">
+      {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+      {up ? '+' : ''}
+      {String(d).replace('.', ',')}
+      {unit} vs préc.
+    </span>
+  );
+}
+
+type Metric = { id: string; label: string; fn: (a: Analytics) => number; format?: (v: number) => string; color: string };
+
+export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLog[]; trackers: Tracker[]; contacts: Contact[]; today: ISODate }) {
+  const [kind, setKind] = useState<PeriodKind>('month');
+  const [anchor, setAnchor] = useState<ISODate>(today);
+  const [group, setGroup] = useState<TrackerGroup | null>(null);
+  const [focus, setFocus] = useState<string | null>(null);
+  const [metricId, setMetricId] = useState('outings');
+  const expenses = useLiveQuery(() => db.expenses.toArray(), [], EMPTY);
+  const period = useMemo(() => periodOf(kind, anchor), [kind, anchor]);
+  const a = useMemo(() => analyze(period, logs, trackers, contacts, expenses, today, group), [period, logs, trackers, contacts, expenses, today, group]);
+  const prev = useMemo(() => analyze(shiftPeriod(period, -1), logs, trackers, contacts, expenses, today, group), [period, logs, trackers, contacts, expenses, today, group]);
+  const isFuture = period.from > today;
+  const usedGroups = GROUP_ORDER.filter((g) => trackers.some((t) => t.group === g));
+
+  const metrics: Metric[] = [
+    { id: 'outings', label: 'Sorties', fn: (x) => x.key.outings.days, color: '#A83278' },
+    { id: 'hendaye', label: 'HENDAYE', fn: (x) => x.key.hendaye.days, color: '#81265D' },
+    { id: 'mood', label: 'Humeur moy.', fn: (x) => x.moodAvg || 0, format: (v) => String(v).replace('.', ','), color: '#D46A8C' },
+    { id: 'spent', label: 'Dépenses sorties', fn: (x) => x.spent.total, format: (v) => `${Math.round(v)}€`, color: '#C98A4B' },
+    { id: 'work', label: 'Travail', fn: (x) => x.key.work.days, color: '#81265D' },
+    { id: 'sport', label: 'Sport', fn: (x) => x.key.sport.days, color: '#4E9A6A' },
+    { id: 'social', label: 'Vie sociale', fn: (x) => x.key.social.days, color: '#8E6BB0' },
+    { id: 'completion', label: 'Journal rempli', fn: (x) => Math.round(x.completion * 100), format: (v) => `${v}%`, color: '#C7A0C9' },
+  ];
+  const focusTracker = trackers.find((t) => t.id === focus);
+  const metric: Metric = focusTracker
+    ? { id: focusTracker.id, label: focusTracker.name, fn: (x) => x.perTracker.find((p) => p.tracker.id === focusTracker.id)?.days || 0, color: focusTracker.color }
+    : metrics.find((m) => m.id === metricId) || metrics[0];
+  const series = useMemo(
+    () => trend(kind, anchor, kind === 'year' ? 4 : 6, (p) => metric.fn(analyze(p, logs, trackers, contacts, expenses, today, group))),
+    [kind, anchor, metric.id, logs, trackers, contacts, expenses, today, group],
+  );
+
+  const tiles: { id: string; label: string; c: Count; p: Count; always?: boolean; dark?: boolean }[] = [
+    { id: 'work', label: 'Jours travaillés', c: a.key.work, p: prev.key.work, always: true },
+    { id: 'remote', label: 'Télétravail', c: a.key.remote, p: prev.key.remote },
+    { id: 'outings', label: 'Jours de sortie', c: a.key.outings, p: prev.key.outings, always: true },
+    { id: 'resto', label: 'Restos', c: a.key.resto, p: prev.key.resto },
+    { id: 'cafe', label: 'Cafés', c: a.key.cafe, p: prev.key.cafe },
+    { id: 'party', label: 'Soirées', c: a.key.party, p: prev.key.party },
+    { id: 'rest', label: 'Repos', c: a.key.rest, p: prev.key.rest },
+    { id: 'sport', label: 'Sport', c: a.key.sport, p: prev.key.sport },
+    { id: 'hendaye', label: 'HENDAYE', c: a.key.hendaye, p: prev.key.hendaye, always: true, dark: true },
+    { id: 'alcohol', label: 'Alcool', c: a.key.alcohol, p: prev.key.alcohol },
+    { id: 'period', label: 'Règles', c: a.key.period, p: prev.key.period },
+    { id: 'pms', label: 'SPM', c: a.key.pms, p: prev.key.pms },
+    { id: 'social', label: 'Jours avec mes proches', c: a.key.social, p: prev.key.social },
+  ].filter((t) => t.always || t.c.days || t.p.days);
+
+  const moodTop = a.dominantMood ? MOODS[a.dominantMood - 1] : undefined;
+  const groupParts = GROUP_ORDER.map((g) => ({
+    label: GROUP_LABEL[g],
+    color: GROUP_COLOR[g],
+    value: a.perTracker.filter((p) => p.tracker.group === g).reduce((s, p) => s + p.count, 0),
+  })).filter((p) => p.value > 0);
+
+  return (
+    <div className="space-y-6" data-testid="analytics">
+      <div className="card space-y-3 p-3">
+        <Segmented
+          value={kind}
+          onChange={(k) => setKind(k)}
+          options={[
+            { value: 'week', label: 'Semaine' },
+            { value: 'month', label: 'Mois' },
+            { value: 'year', label: 'Année' },
+          ]}
+          className="w-full"
+        />
+        <div className="flex items-center justify-between">
+          <button className="icon-btn h-10 w-10" onClick={() => setAnchor(shiftPeriod(period, -1).from)} aria-label="Période précédente">
+            <ChevronLeft size={18} />
+          </button>
+          <div className="text-center">
+            <div className="font-serif text-xl font-semibold text-plum" data-testid="period-label">
+              {period.label}
+            </div>
+            {period.to >= today && period.from <= today && <div className="text-[11px] text-soft">en cours · jusqu'à aujourd'hui</div>}
+          </div>
+          <button className="icon-btn h-10 w-10" onClick={() => setAnchor(shiftPeriod(period, 1).from)} disabled={shiftPeriod(period, 1).from > today} aria-label="Période suivante">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+          <button className={`chip shrink-0 ${!group ? 'chip-on' : ''}`} onClick={() => setGroup(null)}>
+            Tout
+          </button>
+          {usedGroups.map((g) => (
+            <button key={g} className={`chip shrink-0 ${group === g ? 'chip-on' : ''}`} onClick={() => setGroup(group === g ? null : g)} data-testid={`filter-${g}`}>
+              {GROUP_LABEL[g]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isFuture ? (
+        <p className="text-center text-sm text-soft">Cette période n'a pas encore commencé.</p>
+      ) : (
+        <>
+          <Wrapped a={a} prev={prev} />
+
+          <div className="card space-y-2 p-4" data-testid="completion">
+            <div className="flex items-baseline justify-between">
+              <div className="label">Journal rempli</div>
+              <div className="font-serif text-xl font-semibold text-plum">
+                {a.logged}/{a.elapsed} jours · {fmtPct(a.completion)}
+              </div>
+            </div>
+            <Progress value={a.completion * 100} />
+            <p className="text-[11px] leading-snug text-soft">
+              Un jour non renseigné n'est pas un jour « sans activité ». Les pourcentages de jours se calculent sur les {a.elapsed} jours écoulés de la période.
+            </p>
+          </div>
+
+          <Section title="L'essentiel">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+              {tiles.map((t) => (
+                <div key={t.id} className={`card p-3 ${t.dark ? 'bg-plum text-white' : ''}`} data-testid={`tile-${t.id}`}>
+                  <div className={`text-[11px] font-medium uppercase tracking-wider ${t.dark ? 'text-white/80' : 'text-soft'}`}>{t.label}</div>
+                  <div className="mt-0.5 font-serif text-[28px] font-semibold leading-none" data-testid={`tile-${t.id}-days`}>
+                    {t.c.days}
+                    <span className={`ml-1 font-sans text-xs font-normal ${t.dark ? 'text-white/80' : 'text-soft'}`}>
+                      jour{t.c.days > 1 ? 's' : ''} · {fmtPct(t.c.freq)}
+                    </span>
+                  </div>
+                  <div className={t.dark ? '[&_*]:!text-white/80' : ''}>
+                    <Delta cur={t.c.days} prev={t.p.days} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-soft">« % » = part des jours de la période où c'est arrivé. Plusieurs activités par jour : le total ne fait pas 100 %. Ce n'est jamais du temps passé.</p>
+          </Section>
+
+          <Section title="Humeurs et états">
+            <div className="card flex flex-wrap items-center gap-5 p-4">
+              <Donut
+                parts={a.moods.map((m) => ({ value: m.days, color: MOODS[m.value - 1].color, label: MOODS[m.value - 1].label }))}
+                center={
+                  moodTop ? (
+                    <>
+                      <span className="font-serif text-lg italic text-plum" data-testid="mood-dominant">
+                        {moodTop.label}
+                      </span>
+                      <span className="text-[10px] text-soft">humeur dominante</span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-soft">pas encore de note</span>
+                  )
+                }
+              />
+              <div className="min-w-[9rem] flex-1 space-y-1">
+                {a.moods
+                  .slice()
+                  .reverse()
+                  .map((m) => (
+                    <div key={m.value} className="flex items-center gap-2 text-sm">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: MOODS[m.value - 1].color }} />
+                      <span className="flex-1 font-serif italic">{MOODS[m.value - 1].label}</span>
+                      <span className="text-soft">{m.days} j</span>
+                    </div>
+                  ))}
+                {a.moodAvg && (
+                  <div className="pt-1 text-xs text-soft" data-testid="mood-avg">
+                    Moyenne {String(a.moodAvg).replace('.', ',')}/5 {prev.moodAvg ? `(préc. ${String(prev.moodAvg).replace('.', ',')})` : ''}
+                  </div>
+                )}
+              </div>
+            </div>
+            {a.feelings.length > 0 && (
+              <div className="card space-y-1.5 p-3">
+                <div className="label">États les plus fréquents</div>
+                {a.feelings.slice(0, 8).map((f) => (
+                  <div key={f.id} className="flex items-center gap-2 text-sm" data-testid={`feeling-stat-${f.id}`}>
+                    <span className={`w-28 shrink-0 truncate ${f.id === 'hendaye' ? 'text-xs font-semibold tracking-widest' : 'font-serif italic'}`}>{f.label}</span>
+                    <div className="flex-1">
+                      <Progress value={(f.days / Math.max(1, a.elapsed)) * 100} color={f.color} className="h-1.5" />
+                    </div>
+                    <span className="w-24 shrink-0 text-right text-xs text-soft">
+                      {f.days} j · int. {String(f.avgLevel).replace('.', ',')}/3
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section title="Calendrier">
+            <Heatmap a={a} today={today} focus={focus} trackers={trackers} />
+            {focusTracker && (
+              <button className="text-xs text-rasp" onClick={() => setFocus(null)}>
+                Afficher les humeurs (au lieu de « {focusTracker.name} »)
+              </button>
+            )}
+          </Section>
+
+          <Section title="Tendances">
+            <div className="card space-y-3 p-3">
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+                {metrics.map((m) => (
+                  <button
+                    key={m.id}
+                    className={`chip shrink-0 ${!focusTracker && metric.id === m.id ? 'chip-on' : ''}`}
+                    onClick={() => {
+                      setFocus(null);
+                      setMetricId(m.id);
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <Bars data={series} color={metric.color} format={metric.format} testid="trend" />
+              <p className="text-[11px] text-soft">
+                {metric.label} sur les {series.length} dernières périodes{metric.id === 'mood' || metric.id === 'completion' || metric.id === 'spent' ? '' : ' (en jours)'}.
+              </p>
+            </div>
+          </Section>
+
+          {groupParts.length > 0 && (
+            <Section title="Répartition des activités">
+              <div className="card flex flex-wrap items-center gap-5 p-4">
+                <Donut
+                  parts={groupParts}
+                  center={
+                    <>
+                      <span className="font-serif text-2xl font-semibold text-plum">{a.totalActivities}</span>
+                      <span className="text-[10px] text-soft">activités</span>
+                    </>
+                  }
+                />
+                <div className="min-w-[9rem] flex-1 space-y-1">
+                  {groupParts.map((p) => (
+                    <div key={p.label} className="flex items-center gap-2 text-sm">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} />
+                      <span className="flex-1">{p.label}</span>
+                      <span className="text-soft">{fmtPct(p.value / Math.max(1, a.totalActivities))}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[11px] text-soft">Part de chaque famille parmi les {a.totalActivities} activités enregistrées (le total fait 100 %).</p>
+            </Section>
+          )}
+
+          <Section title="Activité par activité">
+            <div className="card divide-y divide-line/70 px-3 py-1">
+              <div className="flex items-center gap-2 py-1.5 text-[10px] uppercase tracking-wider text-soft">
+                <span className="flex-1">Activité</span>
+                <span className="w-12 text-right">jours</span>
+                <span className="w-14 text-right">% jours</span>
+                <span className="w-16 text-right">% activités</span>
+              </div>
+              {a.perTracker
+                .filter((p) => p.days > 0)
+                .map((p) => (
+                  <button
+                    key={p.tracker.id}
+                    onClick={() => setFocus(focus === p.tracker.id ? null : p.tracker.id)}
+                    className={`flex w-full items-center gap-2 py-2 text-left text-sm ${focus === p.tracker.id ? 'font-semibold text-rasp' : ''}`}
+                    data-testid={`row-${p.tracker.id}`}
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white" style={{ background: p.tracker.color }}>
+                      <Icon name={p.tracker.icon} size={12} />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {p.tracker.name}
+                      {p.spent > 0 && <span className="ml-1 text-xs font-normal text-soft">· {eur(p.spent)}</span>}
+                    </span>
+                    <span className="w-12 text-right">{p.days}</span>
+                    <span className="w-14 text-right text-soft">{fmtPct(p.freq)}</span>
+                    <span className="w-16 text-right text-soft">{fmtPct(p.share)}</span>
+                  </button>
+                ))}
+              {a.totalActivities === 0 && <p className="py-3 text-center text-sm text-soft">Aucune activité sur cette période.</p>}
+            </div>
+            <p className="text-[11px] text-soft">Touche une activité pour la voir dans le calendrier et dans les tendances.</p>
+          </Section>
+
+          {(a.people.length > 0 || a.places.length > 0) && (
+            <Section title="Mon monde">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {a.people.length > 0 && (
+                  <div className="card space-y-1.5 p-3">
+                    <div className="label">Les personnes que j'ai le plus vues</div>
+                    {a.people.slice(0, 8).map(({ contact: c, days }) => (
+                      <div key={c.id} className="flex items-center gap-2 text-sm" data-testid={`people-count-${c.id}`}>
+                        <span className="w-20 shrink-0 truncate">{c.name}</span>
+                        <div className="flex-1">
+                          <Progress value={(days / a.people[0].days) * 100} color={c.color} className="h-1.5" />
+                        </div>
+                        <span className="w-10 text-right font-semibold text-plum">{days} j</span>
+                      </div>
+                    ))}
+                    <p className="pt-1 text-[11px] text-soft">
+                      Vie sociale : {a.key.social.days} jour{a.key.social.days > 1 ? 's' : ''} avec au moins une personne ({fmtPct(a.key.social.freq)} des jours).
+                    </p>
+                  </div>
+                )}
+                {a.places.length > 0 && (
+                  <div className="card space-y-1.5 p-3">
+                    <div className="label">Mes lieux</div>
+                    {a.places.slice(0, 8).map(({ contact: c, days }) => (
+                      <div key={c.id} className="flex items-center gap-2 text-sm" data-testid={`place-count-${c.id}`}>
+                        <MapPin size={12} className="shrink-0 text-soft" />
+                        <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                        <span className="font-semibold text-plum">{days} j</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {(a.symptoms.pms.length > 0 || a.symptoms.period.length > 0 || a.key.period.days > 0) && (
+            <Section title="Mon cycle">
+              <div className="card space-y-2 p-3 text-sm">
+                <div>
+                  Règles : <b>{a.key.period.days}</b> jour{a.key.period.days > 1 ? 's' : ''} · SPM : <b>{a.key.pms.days}</b> jour{a.key.pms.days > 1 ? 's' : ''}
+                </div>
+                {a.symptoms.pms.length > 0 && (
+                  <div>
+                    <div className="label">Symptômes prémenstruels</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {a.symptoms.pms.map(([s, n]) => (
+                        <span key={s} className="rounded-full bg-blush/70 px-2.5 py-1 text-xs text-plum">
+                          {s} · {n}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {a.symptoms.period.length > 0 && (
+                  <div>
+                    <div className="label">Pendant les règles</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {a.symptoms.period.map(([s, n]) => (
+                        <span key={s} className="rounded-full bg-blush/70 px-2.5 py-1 text-xs text-plum">
+                          {s} · {n}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {a.spent.total > 0 && (
+            <Section title="Dépenses de mes journées">
+              <div className="card space-y-1.5 p-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-soft">Total saisi depuis le journal</span>
+                  <span className="font-serif text-2xl font-semibold text-plum" data-testid="spent-total">
+                    {eur(a.spent.total)}
+                  </span>
+                </div>
+                {a.spent.byTracker.map((s) => (
+                  <div key={s.tracker.id} className="flex items-center gap-2 text-sm">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.tracker.color }} />
+                    <span className="flex-1">{s.tracker.name}</span>
+                    <span>{eur(s.amount)}</span>
+                  </div>
+                ))}
+                <p className="pt-1 text-[11px] text-soft">Ces montants sont déjà comptés dans ton Budget (une seule fois). Précédente période : {eur(prev.spent.total)}.</p>
+              </div>
+            </Section>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Calendrier de chaleur : couleur = humeur, ou présence de l'activité choisie. */
+function Heatmap({ a, today, focus, trackers }: { a: Analytics; today: ISODate; focus: string | null; trackers: Tracker[] }) {
+  const t = trackers.find((x) => x.id === focus);
+  const color = (d: ISODate) => {
+    if (d > today) return 'transparent';
+    const l = a.byDate.get(d);
+    if (t) return l?.items.some((i) => i.trackerId === t.id) ? t.color : 'rgb(var(--c-blush) / 0.6)';
+    return l?.mood ? MOODS[l.mood - 1].color : 'rgb(var(--c-blush) / 0.6)';
+  };
+  const legend = (
+    <div className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-soft">
+      {t ? (
+        <span className="inline-flex items-center gap-1">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: t.color }} /> {t.name}
+        </span>
+      ) : (
+        MOODS.map((m) => (
+          <span key={m.value} className="inline-flex items-center gap-1">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
+            <span className="font-serif italic">{m.label}</span>
+          </span>
+        ))
+      )}
+      <span className="inline-flex items-center gap-1">
+        <span className="h-2.5 w-2.5 rounded-full bg-blush" /> non renseigné
+      </span>
+    </div>
+  );
+  if (a.period.kind === 'year') {
+    const y = a.period.from.slice(0, 4);
+    return (
+      <div className="card overflow-x-auto p-3" data-testid="heatmap">
+        <div className="min-w-[300px] space-y-[3px]">
+          {Array.from({ length: 12 }, (_, m) => {
+            const mm = String(m + 1).padStart(2, '0');
+            return (
+              <div key={m} className="flex items-center gap-[3px]">
+                <span className="w-7 shrink-0 text-[9px] text-soft">{fmt(`${y}-${mm}-01`, 'MMM')}</span>
+                {Array.from({ length: 31 }, (_, d) => {
+                  const iso = `${y}-${mm}-${String(d + 1).padStart(2, '0')}`;
+                  const valid = monthOf(iso) === `${y}-${mm}` && d + 1 <= new Date(Number(y), m + 1, 0).getDate();
+                  return <span key={d} className="aspect-square flex-1 rounded-[3px]" style={{ background: valid ? color(iso) : 'transparent' }} title={valid ? iso : undefined} />;
+                })}
+              </div>
+            );
+          })}
+        </div>
+        {legend}
+      </div>
+    );
+  }
+  const start = weekStart(a.period.from);
+  const end = a.period.kind === 'week' ? addDays(start, 6) : addDays(weekStart(a.period.to), 6);
+  const days = range(start, end);
+  return (
+    <div className="card p-3" data-testid="heatmap">
+      <div className="grid grid-cols-7 gap-1 pb-1 text-center">
+        {WEEKDAYS_SHORT.map((w) => (
+          <div key={w} className="label text-[10px]">
+            {w}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((d) => {
+          const inside = d >= a.period.from && d <= a.period.to;
+          const hend = a.byDate.get(d)?.feelings?.some((f) => f.id === 'hendaye');
+          return (
+            <div
+              key={d}
+              className={`relative flex aspect-square items-center justify-center rounded-lg text-[11px] ${inside ? '' : 'opacity-20'}`}
+              style={{ background: color(d), color: '#fff' }}
+              title={d}
+            >
+              <span className="font-semibold mix-blend-luminosity">{Number(d.slice(8))}</span>
+              {hend && !t && <span className="absolute right-0.5 top-0 text-[7px] font-bold">H</span>}
+            </div>
+          );
+        })}
+      </div>
+      {legend}
+    </div>
+  );
+}
+
+/** « Wrapped » de la période : quelques cartes à faire défiler, façon story. */
+function Wrapped({ a, prev }: { a: Analytics; prev: Analytics }) {
+  const mood = a.dominantMood ? MOODS[a.dominantMood - 1] : undefined;
+  const topAct = a.perTracker.find((p) => p.days > 0);
+  const who = a.people[0];
+  const where = a.places[0];
+  const cards: { k: string; big: ReactNode; small: string; bg: string }[] = [];
+  if (a.logged === 0) return null;
+  cards.push({ k: 'intro', big: a.period.label, small: `${a.logged} jour${a.logged > 1 ? 's' : ''} racontés · your life, wrapped`, bg: 'linear-gradient(140deg,#81265D,#A83278 60%,#E0789E)' });
+  if (mood) cards.push({ k: 'mood', big: <span className="italic">{mood.label}</span>, small: 'ton humeur dominante', bg: `linear-gradient(140deg,#382332,${mood.color})` });
+  if (a.key.outings.days) cards.push({ k: 'out', big: `${a.key.outings.days} sorties`, small: prev.key.outings.days ? `${a.key.outings.days >= prev.key.outings.days ? '+' : ''}${a.key.outings.days - prev.key.outings.days} vs la période précédente` : 'social era', bg: 'linear-gradient(140deg,#A83278,#8E6BB0)' });
+  if (who) cards.push({ k: 'who', big: who.contact.name, small: `ta personne n°1 · ${who.days} jour${who.days > 1 ? 's' : ''} ensemble`, bg: 'linear-gradient(140deg,#D46A8C,#81265D)' });
+  if (where) cards.push({ k: 'where', big: where.contact.name, small: `ton QG · ${where.days} fois`, bg: 'linear-gradient(140deg,#8E6BB0,#382332)' });
+  if (topAct) cards.push({ k: 'act', big: topAct.tracker.name, small: `ton activité n°1 · ${topAct.days} jours`, bg: `linear-gradient(140deg,${topAct.tracker.color},#382332)` });
+  cards.push({ k: 'hendaye', big: `HENDAYE × ${a.key.hendaye.days}`, small: a.key.hendaye.days ? 'lendemains qui piquent' : 'zéro lendemain difficile. Iconic.', bg: 'linear-gradient(140deg,#382332,#81265D)' });
+  if (a.spent.total) cards.push({ k: 'spent', big: eur(a.spent.total), small: 'dépensés en sorties et plaisirs', bg: 'linear-gradient(140deg,#C98A4B,#A83278)' });
+  return (
+    <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0" data-testid="wrapped">
+      {cards.map((c) => (
+        <div key={c.k} className="flex h-44 w-[72%] shrink-0 snap-center flex-col justify-end rounded-3xl p-5 text-white shadow-lift sm:w-64" style={{ background: c.bg }}>
+          <div className="font-serif text-[30px] font-semibold leading-tight">{c.big}</div>
+          <div className="mt-1 text-xs uppercase tracking-[0.14em] text-white/80">{c.small}</div>
+        </div>
+      ))}
+    </div>
+  );
+}

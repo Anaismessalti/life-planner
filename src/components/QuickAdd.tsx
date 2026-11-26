@@ -1,4 +1,4 @@
-import { BookHeart, CalendarClock, CheckSquare, FolderHeart, HandCoins, Link2, Receipt, StickyNote } from 'lucide-react';
+import { BookHeart, CalendarClock, CheckSquare, Euro, FolderHeart, HandCoins, Link2, StickyNote } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { create } from '../db/db';
 import type { Task } from '../db/types';
@@ -11,7 +11,7 @@ const ITEMS = [
   { label: 'Tâche', icon: CheckSquare, run: () => openEditor({ type: 'task' }) },
   { label: 'Rendez-vous', icon: CalendarClock, run: () => openEditor({ type: 'task', defaults: { kind: 'event' } }) },
   { label: 'Projet', icon: FolderHeart, run: () => openEditor({ type: 'project' }) },
-  { label: 'Dépense', icon: Receipt, run: () => openEditor({ type: 'expense' }) },
+  { label: 'Dépense', icon: Euro, run: () => openEditor({ type: 'expense' }) },
   { label: 'Revenu', icon: HandCoins, run: () => openEditor({ type: 'income' }) },
   { label: 'Note', icon: StickyNote, run: () => openEditor({ type: 'note' }) },
   { label: 'Lien', icon: Link2, run: () => openEditor({ type: 'note', link: true }) },
@@ -62,8 +62,8 @@ export function QuickAdd() {
         />
         <p className="mt-1.5 text-xs text-soft">
           {p && (p.date || p.time || p.priority)
-            ? `Compris : ${p.kind === 'event' ? 'rendez-vous ' : ''}${p.date ? relativeDay(p.date, today).toLowerCase() : "aujourd'hui"}${p.time ? ' à ' + p.time : ''}${p.priority ? ' · essentiel' : ''} — Entrée pour valider`
-            : 'Astuce : utilise le micro du clavier pour dicter. « ! » = essentiel.'}
+            ? `Compris : ${p.kind === 'event' ? 'rendez-vous ' : ''}${p.date ? relativeDay(p.date, today).toLowerCase() : "aujourd'hui"}${p.time ? ' à ' + p.time : ''}${p.priority ? ' · à faire absolument' : ''} — Entrée pour valider`
+            : 'Astuce : utilise le micro du clavier pour dicter. « ! » = à faire absolument.'}
         </p>
       </form>
       <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-8">

@@ -2,7 +2,7 @@ import { BookHeart, CalendarDays, FolderHeart, Plus, Settings as Cog, StickyNote
 import { useEffect, useSyncExternalStore } from 'react';
 import { QuickAdd } from './components/QuickAdd';
 import { TaskEditor } from './components/TaskEditor';
-import { Toasts } from './components/ui';
+import { ErrorBoundary, Toasts } from './components/ui';
 import { syncStore } from './lib/sync/engine';
 import { navigate, openEditor, useEditor, useRoute, type Route } from './lib/ui-store';
 import { BudgetPage, ExpenseEditor, FixedEditor, IncomeEditor } from './pages/Budget';
@@ -103,7 +103,9 @@ export function App() {
 
       <main className="pt-safe mx-auto max-w-6xl px-4 pb-32 pt-6 md:pb-12 md:pl-[17rem] md:pr-8 lg:pl-[18.5rem]">
         <div className="pt-2 md:pt-6">
-          <Page />
+          <ErrorBoundary resetKey={route}>
+            <Page />
+          </ErrorBoundary>
         </div>
       </main>
 
@@ -130,7 +132,9 @@ export function App() {
         </div>
       </nav>
 
-      <Editors />
+      <ErrorBoundary resetKey={JSON.stringify(useEditor())}>
+        <Editors />
+      </ErrorBoundary>
       <Toasts />
     </div>
   );
@@ -140,7 +144,7 @@ function TabButton({ route, label, icon: I, active }: { route: Route; label: str
   return (
     <button
       onClick={() => navigate(route)}
-      className={`flex min-w-0 flex-col items-center gap-0.5 pb-1.5 pt-2 text-[9.5px] font-medium tracking-tight ${active ? 'text-rasp' : 'text-plum/60'}`}
+      className={`flex min-w-0 flex-col items-center gap-0.5 pb-1.5 pt-2 text-[10px] font-medium tracking-tight ${active ? 'text-rasp' : 'text-plum/60'}`}
       aria-current={active ? 'page' : undefined}
     >
       <I size={21} strokeWidth={active ? 2 : 1.6} />

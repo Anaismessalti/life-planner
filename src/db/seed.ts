@@ -68,7 +68,6 @@ export const DEFAULT_TRACKERS: [string, string, string, string, Tracker['group']
 
 /** Ajoutés dans une mise à jour : maison, soin de soi et études. */
 export const MORE_TRACKERS: [string, string, string, string, Tracker['group']][] = [
-  ['tr-hendaye', 'Hendaye (gueule de bois)', 'rain', '#9C8A96', 'moi'],
   ['tr-regles', 'Règles', 'drop', '#C0395A', 'cycle'],
   ['tr-spm', 'SPM (prémenstruel)', 'moon', '#8E6BB0', 'cycle'],
   ['tr-maison', 'Journée à la maison', 'home', '#C7A0C9', 'maison'],
