@@ -4,7 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Progress, Section, Segmented, toast } from '../components/ui';
 import { db } from '../db/db';
 import type { Contact, DayLog, ISODate, Tracker, TrackerGroup } from '../db/types';
-import { WEEKDAYS_SHORT, addDays, fmt, monthOf, range, weekStart } from '../lib/dates';
+import { WEEKDAYS_SHORT, addDays, capitalize, fmt, monthOf, range, weekStart } from '../lib/dates';
 import { analyze, fmtPct, periodOf, shiftPeriod, trend, type Analytics, type Count, type PeriodKind } from '../lib/analytics';
 import { eur } from '../lib/finance';
 import { Icon } from '../lib/icons';
@@ -124,6 +124,8 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
     { id: 'work', label: 'Travail', fn: (x) => x.key.work.days, color: '#81265D' },
     { id: 'sport', label: 'Sport', fn: (x) => x.key.sport.days, color: '#4E9A6A' },
     { id: 'social', label: 'Vie sociale', fn: (x) => x.key.social.days, color: '#8E6BB0' },
+    { id: 'score', label: 'Note des journées', fn: (x) => x.score.avg || 0, format: (v) => `${String(v).replace('.', ',')}`, color: '#A83278' },
+    { id: 'rated', label: 'Note des sorties', fn: (x) => x.rated.avg || 0, format: (v) => `${String(v).replace('.', ',')}`, color: '#D46A8C' },
     { id: 'sleep', label: 'Sommeil moy.', fn: (x) => Math.round(((x.sleep.avgMin || 0) / 60) * 10) / 10, format: (v) => `${String(v).replace('.', ',')}h`, color: '#5B6FB5' },
     { id: 'fmj', label: 'Five Minute Journal', fn: (x) => x.fmj.days, color: '#E0789E' },
     { id: 'completion', label: 'Journal rempli', fn: (x) => Math.round(x.completion * 100), format: (v) => `${v}%`, color: '#C7A0C9' },
@@ -291,6 +293,8 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
               </div>
             )}
           </Section>
+
+          {(a.score.days > 0 || a.rated.count > 0) && <RatingsSection a={a} prev={prev} />}
 
           <WellbeingSections a={a} prev={prev} />
 
@@ -749,6 +753,74 @@ function AgendaSection({ a }: { a: Analytics }) {
           <p className="rounded-xl bg-blush/50 px-3 py-2 text-xs text-plum" data-testid="agenda-mood">
             Humeur moyenne les jours avec rendez-vous : <b>{n1(g.moodWithEvents)}/5</b> · sans : <b>{n1(g.moodWithout)}/5</b>
           </p>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+/** Mes notes : la journée sur 10 et chaque sortie notée. */
+function RatingsSection({ a, prev }: { a: Analytics; prev: Analytics }) {
+  return (
+    <Section title="Mes notes">
+      <div className="card space-y-3 p-4" data-testid="ratings">
+        <div className="grid grid-cols-2 gap-2 text-center">
+          <div>
+            <div className="font-serif text-3xl font-semibold text-plum" data-testid="score-avg">
+              {a.score.avg !== undefined ? `${n1(a.score.avg)}/10` : '–'}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-soft">
+              mes journées · {a.score.days} notée{a.score.days > 1 ? 's' : ''}
+            </div>
+            {prev.score.avg !== undefined && <div className="text-[10px] text-soft">préc. {n1(prev.score.avg)}/10</div>}
+          </div>
+          <div>
+            <div className="font-serif text-3xl font-semibold text-plum" data-testid="rated-avg">
+              {a.rated.avg !== undefined ? `${n1(a.rated.avg)}/10` : '–'}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-soft">
+              mes sorties · {a.rated.count} notée{a.rated.count > 1 ? 's' : ''}
+            </div>
+            {prev.rated.avg !== undefined && <div className="text-[10px] text-soft">préc. {n1(prev.rated.avg)}/10</div>}
+          </div>
+        </div>
+        {a.score.best.length > 0 && (
+          <div className="space-y-1 border-t border-line/60 pt-2">
+            <div className="label">Mes plus belles journées</div>
+            {a.score.best.map((b) => (
+              <div key={b.date} className="flex items-center gap-2 text-sm">
+                <span className="flex-1">{capitalize(fmt(b.date, 'EEEE d MMMM'))}</span>
+                <span className="font-serif font-semibold text-plum">{b.score}/10</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {a.rated.top.length > 0 && (
+          <div className="space-y-1 border-t border-line/60 pt-2" data-testid="rated-top">
+            <div className="label">Mes meilleures sorties</div>
+            {a.rated.top.map((r, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white" style={{ background: r.tracker.color }}>
+                  <Icon name={r.tracker.icon} size={12} />
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                  {r.tracker.name}
+                  {r.with.length ? ` · ${r.with.join(', ')}` : ''}
+                  <span className="text-xs text-soft"> · {fmt(r.date, 'd MMM')}</span>
+                </span>
+                <span className="font-serif font-semibold text-plum">{r.rating}/10</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {a.rated.byTracker.length > 1 && (
+          <div className="flex flex-wrap gap-1.5 border-t border-line/60 pt-2">
+            {a.rated.byTracker.map((t) => (
+              <span key={t.tracker.id} className="rounded-full bg-blush/70 px-2.5 py-1 text-xs text-plum">
+                {t.tracker.name} · {n1(t.avg)}/10 ({t.count})
+              </span>
+            ))}
+          </div>
         )}
       </div>
     </Section>

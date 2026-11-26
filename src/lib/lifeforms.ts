@@ -14,6 +14,8 @@ export interface FormSpec {
   tags?: { label: string; options: string[] };
   level?: { label: string; options: string[] };
   pain?: { label: string; options: string[] };
+  /** Propose une note sur 10 (sorties, soirées, voyages…). */
+  rate?: string;
   comment: string;
 }
 
@@ -21,9 +23,9 @@ const PMS_SYMPTOMS = ['Irritabilité', 'Tristesse', 'Anxiété', 'Fringales', 'F
 const PERIOD_SYMPTOMS = ['Crampes', 'Mal au dos', 'Ballonnements', 'Fatigue', 'Maux de tête', 'Nausées', 'Seins sensibles', 'Acné'];
 
 export const FORMS: Record<TrackerForm, FormSpec> = {
-  outing: { label: 'Sortie (avec qui, où, dépense)', people: true, places: true, amount: true, comment: 'Un souvenir, une anecdote…' },
-  cafe: { label: 'Café (avec qui ou seule, où)', people: true, alone: true, places: true, amount: true, comment: 'Commentaire' },
-  travel: { label: 'Voyage (destination, avec qui, dépense)', people: true, alone: true, places: true, placesLabel: 'Destination', amount: true, comment: 'Ce que tu as aimé…' },
+  outing: { label: 'Sortie (avec qui, où, dépense, note)', people: true, places: true, amount: true, rate: 'Ma note de la sortie', comment: 'Un souvenir, une anecdote…' },
+  cafe: { label: 'Café (avec qui ou seule, où, note)', people: true, alone: true, places: true, amount: true, rate: 'Ma note', comment: 'Commentaire' },
+  travel: { label: 'Voyage (destination, avec qui, dépense, note)', people: true, alone: true, places: true, placesLabel: 'Destination', amount: true, rate: 'Ma note du voyage', comment: 'Ce que tu as aimé…' },
   work: { label: 'Travail (commentaire)', comment: 'Réunion, projet, ressenti…' },
   sport: {
     label: 'Sport (type, commentaire)',
@@ -50,7 +52,7 @@ export const FORMS: Record<TrackerForm, FormSpec> = {
     comment: 'Commentaire',
   },
   spend: { label: 'Achat (dépense)', amount: true, comment: 'Commentaire' },
-  social: { label: 'Famille, amis (avec qui, où)', people: true, places: true, comment: 'Commentaire' },
+  social: { label: 'Famille, amis (avec qui, où, note)', people: true, places: true, rate: 'Ma note du moment', comment: 'Commentaire' },
   sleep: {
     label: 'Sommeil (qualité)',
     level: { label: 'Ma nuit', options: ['Nuit blanche', 'Mal dormi', 'Correcte', 'Très bien dormi'] },

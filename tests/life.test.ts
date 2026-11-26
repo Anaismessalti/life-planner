@@ -101,6 +101,28 @@ describe('rendez-vous → journal', () => {
   });
 });
 
+describe('notes sur 10', () => {
+  it('moyenne des journées, meilleures journées et meilleures sorties', () => {
+    const trackers = [T('tr-soiree', 'sorties', 'Soirée'), T('tr-diner', 'sorties', 'Dîner')];
+    const contacts = [P('p-lea', 'Léa')];
+    const logs = [
+      L('2026-10-01', { score: 8, items: [{ trackerId: 'tr-soiree', rating: 9, people: ['p-lea'] }] }),
+      L('2026-10-02', { score: 5, items: [{ trackerId: 'tr-diner', rating: 6 }, { trackerId: 'tr-soiree', rating: 7 }] }),
+      L('2026-10-03', { score: 11 as number }), // invalide : ignorée
+    ];
+    const a = analyze(periodOf('month', '2026-10-01'), logs, trackers, contacts, [], '2026-12-01');
+    expect(a.score.days).toBe(2);
+    expect(a.score.avg).toBe(6.5);
+    expect(a.score.best[0]).toEqual({ date: '2026-10-01', score: 8 });
+    expect(a.rated.count).toBe(3);
+    expect(a.rated.avg).toBe(7.3);
+    expect(a.rated.top[0].rating).toBe(9);
+    expect(a.rated.top[0].with).toEqual(['Léa']);
+    expect(a.rated.byTracker[0]).toMatchObject({ avg: 8, count: 2 });
+    expect(isLogged(L('2026-10-05', { score: 7 }))).toBe(true);
+  });
+});
+
 describe('Wrapped', () => {
   it('produit des cartes, dont sommeil et gratitudes', () => {
     const logs = [L('2026-10-01', { mood: 5, sleep: { bed: '23:00', wake: '07:00' }, fmj: { grateful: ['a', 'b'] } })];

@@ -84,6 +84,10 @@ export interface Analytics {
   spent: { total: number; byTracker: { tracker: Tracker; amount: number }[] };
   byDate: Map<ISODate, DayLog>;
   sleep: { nights: number; avgMin?: number; avgQuality?: number; short: number; bedtime?: string; quality: { value: number; nights: number }[]; tags: [string, number][] };
+  /** Note globale des journées (sur 10). */
+  score: { days: number; avg?: number; best: { date: ISODate; score: number }[] };
+  /** Sorties, soirées, voyages notés (sur 10). */
+  rated: { count: number; avg?: number; top: { date: ISODate; tracker: Tracker; rating: number; with: string[] }[]; byTracker: { tracker: Tracker; avg: number; count: number }[] };
   fmj: { mornings: number; evenings: number; days: number; gratitudes: number; breathe: number; recent: { date: ISODate; text: string }[] };
   /** Ce qui était prévu dans l'agenda (tâches et rendez-vous) sur la période. */
   agenda?: {
@@ -154,6 +158,7 @@ export function isLogged(l: DayLog) {
       (typeof l.mood === 'number' && l.mood >= 1) ||
       (l.feelings?.length || 0) > 0 ||
       !!l.text?.trim() ||
+      (typeof l.score === 'number' && l.score >= 1) ||
       sleepMinutes(l.sleep) !== undefined ||
       !!l.sleep?.quality ||
       morningDone(l.fmj) ||
@@ -276,9 +281,32 @@ export function analyze(
     .flatMap((l) => [...(l.fmj?.grateful || []), ...(l.fmj?.amazing || [])].filter((x) => x?.trim()).map((text) => ({ date: l.date, text: text.trim() })))
     .slice(0, 6);
 
+  const scored = inP.filter((l) => typeof l.score === 'number' && l.score >= 1 && l.score <= 10);
+  const ratedItems: { date: ISODate; tracker: Tracker; rating: number; with: string[] }[] = [];
+  for (const l of inP)
+    for (const it of l.items) {
+      const t = byId.get(it.trackerId);
+      if (!t || typeof it.rating !== 'number' || it.rating < 1 || it.rating > 10) continue;
+      const names = [...(it.people || []), ...(it.places || [])].map((id) => liveContacts.get(id)?.name).filter((x): x is string => !!x);
+      ratedItems.push({ date: l.date, tracker: t, rating: it.rating, with: names });
+    }
+  const rByT = new Map<string, number[]>();
+  for (const r of ratedItems) rByT.set(r.tracker.id, [...(rByT.get(r.tracker.id) || []), r.rating]);
+
   return {
     period,
     elapsed,
+    score: {
+      days: scored.length,
+      avg: avg1(scored.map((l) => l.score!)),
+      best: [...scored].sort((a, b) => b.score! - a.score! || b.date.localeCompare(a.date)).slice(0, 3).map((l) => ({ date: l.date, score: l.score! })),
+    },
+    rated: {
+      count: ratedItems.length,
+      avg: avg1(ratedItems.map((r) => r.rating)),
+      top: [...ratedItems].sort((a, b) => b.rating - a.rating || b.date.localeCompare(a.date)).slice(0, 5),
+      byTracker: [...rByT.entries()].map(([id, v]) => ({ tracker: byId.get(id)!, avg: avg1(v)!, count: v.length })).sort((a, b) => b.avg - a.avg || b.count - a.count),
+    },
     sleep: {
       nights: nights.length,
       avgMin: mins.length ? Math.round(mins.reduce((a, b) => a + b, 0) / mins.length) : undefined,

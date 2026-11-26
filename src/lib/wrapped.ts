@@ -34,6 +34,9 @@ export function wrappedCards(a: Analytics, prev: Analytics): WrappedCard[] {
     });
   if (who) out.push({ k: 'who', big: who.contact.name, small: `ta personne n°1 · ${who.days} jour${who.days > 1 ? 's' : ''} ensemble`, from: '#D46A8C', to: '#81265D' });
   if (where) out.push({ k: 'where', big: where.contact.name, small: `ton QG · ${where.days} fois`, from: '#8E6BB0', to: '#382332' });
+  const bestOut = a.rated.top[0];
+  if (bestOut) out.push({ k: 'best-out', big: `${bestOut.rating}/10`, small: `ta meilleure sortie · ${bestOut.tracker.name}${bestOut.with.length ? ` avec ${bestOut.with.slice(0, 2).join(', ')}` : ''}`, from: '#E0457B', to: '#81265D' });
+  if (a.score.avg !== undefined) out.push({ k: 'score', big: `${String(a.score.avg).replace('.', ',')}/10`, small: `la note moyenne de tes journées`, from: '#A83278', to: '#C7A0C9' });
   if (topAct) out.push({ k: 'act', big: topAct.tracker.name, small: `ton activité n°1 · ${topAct.days} jour${topAct.days > 1 ? 's' : ''}`, from: topAct.tracker.color, to: '#382332' });
   if (a.sleep.avgMin) out.push({ k: 'sleep', big: fmtDuration(a.sleep.avgMin), small: `de sommeil par nuit · ${a.sleep.nights} nuit${a.sleep.nights > 1 ? 's' : ''}`, from: '#5B6FB5', to: '#382332' });
   if (a.fmj.gratitudes) out.push({ k: 'fmj', big: `${a.fmj.gratitudes} gratitudes`, small: `écrites en ${a.fmj.days} jour${a.fmj.days > 1 ? 's' : ''}`, from: '#E0789E', to: '#A83278' });

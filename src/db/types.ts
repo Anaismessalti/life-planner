@@ -219,13 +219,17 @@ export interface DayItem {
   pain?: number;
   /** Symptômes, type de sport, ressenti… */
   tags?: string[];
+  /** Ma note de la sortie, de 1 à 10. */
+  rating?: number;
 }
 
 /** Journal d'une journée. id = date (YYYY-MM-DD) : jamais de doublon, même entre appareils. */
 export interface DayLog extends BaseRecord {
   date: ISODate;
-  /** Note de la journée, de 1 à 5. */
+  /** Humeur de la journée, de 1 à 5. */
   mood?: number;
+  /** Note globale de la journée, de 1 à 10. */
+  score?: number;
   /** Activités cochées, avec un détail facultatif (« avec Léa », « chez Sarah »). */
   items: DayItem[];
   text?: string;

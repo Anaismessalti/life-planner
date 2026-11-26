@@ -230,9 +230,36 @@ function itemSummary(it: DayItem, t: Tracker, names: Map<string, string>, amount
   if (spec.level && it.level) bits.push(spec.level.options[it.level - 1]?.toLowerCase() || '');
   if (spec.pain && it.pain) bits.push(`douleurs ${spec.pain.options[it.pain]?.toLowerCase() || ''}`);
   if (it.tags?.length) bits.push(...it.tags.map((x) => x.toLowerCase()));
+  if (it.rating) bits.push(`${it.rating}/10`);
   if (amount) bits.push(eur(amount));
   if (it.detail) bits.push(it.detail);
   return bits.filter(Boolean).join(', ');
+}
+
+/** Note de 1 à 10 en un geste ; retoucher la même note l'enlève. */
+export function ScoreRow({ value, onChange, testid }: { value?: number; onChange: (v: number | undefined) => void; testid: string }) {
+  return (
+    <div className="grid grid-cols-10 gap-1" role="radiogroup">
+      {Array.from({ length: 10 }, (_, i) => i + 1).map((v) => {
+        const on = value === v;
+        const lit = !!value && v <= value;
+        return (
+          <button
+            key={v}
+            role="radio"
+            aria-checked={on}
+            aria-label={`${v} sur 10`}
+            onClick={() => onChange(on ? undefined : v)}
+            className={`flex h-9 items-center justify-center rounded-full font-serif text-[15px] font-semibold transition active:scale-90 ${on ? 'text-white shadow-soft' : lit ? 'text-plum' : 'text-soft'}`}
+            style={{ background: on ? 'linear-gradient(140deg,#A83278,#81265D)' : lit ? 'rgb(var(--c-blush))' : 'rgb(var(--c-blush) / 0.4)' }}
+            data-testid={`${testid}-${v}`}
+          >
+            {v}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 const OPEN_KEY = 'lp-journal-open-groups';
@@ -340,6 +367,14 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
       <div className="space-y-2">
         <div className="label">Mood of the day</div>
         <MoodPicker date={date} value={log?.mood} />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="label">Ma journée sur 10</div>
+          {log?.score ? <div className="font-serif text-lg font-semibold text-plum" data-testid="day-score">{log.score}/10</div> : null}
+        </div>
+        <ScoreRow value={log?.score} onChange={(v) => saveLog(date, { score: v })} testid="score" />
       </div>
 
       <div className="space-y-2">
@@ -545,6 +580,12 @@ function ItemPanel({
     <div className="anim-rise space-y-3 rounded-2xl bg-blush/50 p-3" data-testid="item-panel">
       {spec.people && row('person', people, 'Avec qui ?')}
       {spec.places && row('place', places, spec.placesLabel || 'Où ?')}
+      {spec.rate && (
+        <div className="space-y-1.5">
+          <div className={sub}>{spec.rate}</div>
+          <ScoreRow value={item.rating} onChange={(v) => onChange({ rating: v })} testid="rating" />
+        </div>
+      )}
       {spec.level && choice('level', spec.level, 1)}
       {spec.pain && choice('pain', spec.pain, 0)}
       {spec.tags && (
