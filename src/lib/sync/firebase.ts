@@ -7,6 +7,7 @@ import {
   signOut,
   onAuthStateChanged,
   sendPasswordResetEmail,
+  connectAuthEmulator,
   type User,
 } from 'firebase/auth';
 import {
@@ -21,6 +22,7 @@ import {
   getDocs,
   serverTimestamp,
   Timestamp,
+  connectFirestoreEmulator,
 } from 'firebase/firestore';
 import type { RemoteAdapter, RemoteRecord } from './engine';
 import type { TableName } from '../../db/types';
@@ -53,6 +55,11 @@ export const isReady = () => !!app;
 export async function initFirebase(cfg: FirebaseConfig) {
   for (const a of getApps()) await deleteApp(a);
   app = initializeApp(cfg);
+  // Uniquement pour les tests automatiques (émulateurs Firebase locaux)
+  if (cfg.emulatorHost) {
+    connectAuthEmulator(getAuth(app), `http://${cfg.emulatorHost}:9099`, { disableWarnings: true });
+    connectFirestoreEmulator(getFirestore(app), cfg.emulatorHost, 8080);
+  }
   return app;
 }
 
