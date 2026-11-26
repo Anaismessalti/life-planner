@@ -246,7 +246,8 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
         {!isEvent && (
           <div className="flex flex-wrap gap-2">
             {(Object.keys(PRIORITY_LABEL) as Priority[]).map((p) => (
-              <button type="button" key={p} className={`chip ${f.priority === p ? 'chip-on' : ''}`} onClick={() => set({ priority: p })}>
+              <button type="button" key={p} className={`prio-${p} chip ${f.priority === p ? 'chip-prio-on' : ''}`} onClick={() => set({ priority: p })} data-testid={`editor-prio-${p}`}>
+                <span className="prio-dot" style={f.priority === p ? { background: 'currentColor' } : undefined} />
                 {PRIORITY_LABEL[p]}
               </button>
             ))}

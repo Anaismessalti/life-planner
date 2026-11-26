@@ -1,8 +1,10 @@
-import { Check, Clock, Flag, FolderHeart, History, MapPin, Repeat, X } from 'lucide-react';
+import { CalendarClock, CalendarPlus, Check, Clock, FolderHeart, History, MapPin, Repeat, X } from 'lucide-react';
+import { useState } from 'react';
 import type { Category } from '../db/types';
 import { diffDays, relativeDay } from '../lib/dates';
 import { OUTCOME_LABEL, setOutcome } from '../lib/agenda';
-import { STUCK_AFTER, isPostponed, moveTask, needsOutcome, postponeCount, setDone, type TaskView } from '../lib/tasks';
+import { PRIORITY_SHORT, STUCK_AFTER, isPostponed, moveTask, needsOutcome, postponeCount, setDone, type TaskView } from '../lib/tasks';
+import { MoveSheet } from './MoveSheet';
 import { openEditor } from '../lib/ui-store';
 import { toast } from './ui';
 
@@ -22,6 +24,11 @@ export function TaskItem({
   showDate?: boolean;
 }) {
   const isEvent = t.kind === 'event';
+  const [moving, setMoving] = useState(false);
+  const openMove = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMoving(true);
+  };
   const closedOther = !!t.outcome && t.outcome !== 'happened';
   const done = t.status === 'done' || (isEvent && t.outcome === 'happened');
   const now = new Date();
@@ -39,7 +46,9 @@ export function TaskItem({
     await setDone(t, !done);
     if (!done) toast('Cochée', { label: 'Annuler', run: () => setDone({ ...t, virtual: false }, false) });
   };
+  const canMove = !done && !closedOther && !t.outcome;
   return (
+    <>
     <div
       role="button"
       tabIndex={0}
@@ -47,10 +56,10 @@ export function TaskItem({
       onKeyDown={(e) => e.key === 'Enter' && openEditor({ type: 'task', task: t })}
       draggable
       onDragStart={(e) => e.dataTransfer.setData('text/task', JSON.stringify(t))}
-      className={`group flex w-full cursor-pointer items-start gap-3 rounded-2xl border border-line/70 bg-card text-left shadow-soft transition hover:border-mauve/60 ${
+      className={`${isEvent ? '' : `prio-${t.priority}`} group flex w-full cursor-pointer items-start gap-3 rounded-2xl border border-line/70 bg-card text-left shadow-soft transition hover:border-mauve/60 ${
         compact ? 'px-2.5 py-2' : 'px-3.5 py-3'
       } ${done || closedOther ? 'opacity-60' : ''}`}
-      style={{ borderLeft: `3px solid ${cat?.color || 'rgb(var(--c-mauve))'}` }}
+      style={{ borderLeft: `4px solid ${isEvent ? cat?.color || 'rgb(var(--c-mauve))' : 'var(--p)'}` }}
       data-testid="task-item"
     >
       {isEvent ? (
@@ -66,8 +75,9 @@ export function TaskItem({
           onClick={toggle}
           aria-label={done ? 'Marquer comme non faite' : 'Marquer comme faite'}
           className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center relative rounded-full border-2 after:absolute after:-inset-2.5 after:content-[''] transition ${
-            done ? 'anim-pop border-rasp bg-rasp text-white' : 'border-mauve hover:border-rasp'
+            done ? 'anim-pop border-rasp bg-rasp text-white' : 'hover:bg-[var(--p2)]'
           }`}
+          style={done ? undefined : { borderColor: 'var(--p)' }}
         >
           {done && <Check size={14} strokeWidth={3} />}
         </button>
@@ -92,9 +102,10 @@ export function TaskItem({
             )}
             {cat && <span style={{ color: cat.color }}>{cat.name}</span>}
             {t.outcome && <span className="font-medium text-plum" data-testid="outcome">{OUTCOME_LABEL[t.outcome]}</span>}
-            {t.priority === 'must' && !isEvent && !closedOther && (
-              <span className="inline-flex items-center gap-1 text-rasp">
-                <Flag size={11} /> Absolument
+            {!isEvent && !closedOther && !done && (
+              <span className="prio-pill" data-testid="prio-pill">
+                <span className="prio-dot" />
+                {PRIORITY_SHORT[t.priority]}
               </span>
             )}
             {isPostponed(t) && !done && !t.outcome && t.originalDate && (
@@ -128,6 +139,9 @@ export function TaskItem({
             <button className="chip min-h-[34px] py-1 text-xs" onClick={(e) => outcome(e, 'noshow', 'Noté comme pas honoré')} data-testid="outcome-noshow">
               Pas honoré
             </button>
+            <button className="chip min-h-[34px] py-1 text-xs" onClick={openMove} data-testid="outcome-moved">
+              <CalendarClock size={13} /> Déplacé
+            </button>
           </div>
         )}
         {stuck && (
@@ -136,10 +150,7 @@ export function TaskItem({
             <div className="flex flex-wrap gap-1.5">
               <button
                 className="chip min-h-[34px] py-1 text-xs"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEditor({ type: 'task', task: t });
-                }}
+                onClick={openMove}
               >
                 Choisir une date
               </button>
@@ -160,6 +171,19 @@ export function TaskItem({
           </div>
         )}
       </div>
+      {canMove && !ask && !compact && (
+        <button
+          className="-mr-1.5 -mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-soft transition hover:bg-blush hover:text-plum"
+          onClick={openMove}
+          aria-label={t.date ? 'Déplacer' : 'Ajouter une date'}
+          title={t.date ? 'Déplacer' : 'Ajouter une date'}
+          data-testid="move-btn"
+        >
+          {t.date ? <CalendarClock size={17} /> : <CalendarPlus size={17} />}
+        </button>
+      )}
     </div>
+    {moving && <MoveSheet t={t} today={today} onClose={() => setMoving(false)} />}
+    </>
   );
 }

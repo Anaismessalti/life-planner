@@ -234,3 +234,41 @@ describe('croisements', () => {
     expect(h.text).toMatch(/^Après une soirée, le lendemain est HENDAYE 100 % du temps, contre 0 %/);
   });
 });
+
+describe('déplacer', () => {
+  it('un rendez-vous déplacé garde sa date de départ, change d’heure et n’est compté qu’une fois', async () => {
+    const { reschedule, undoReschedule } = await import('../src/lib/agenda');
+    const e = await task({ title: 'Kiné', kind: 'event', date: '2026-11-19', time: '14:00' });
+    const moved = await reschedule(e, '2026-11-28', '15:30', '2026-11-26');
+    expect(moved).toMatchObject({ date: '2026-11-28', time: '15:30', originalDate: '2026-11-19', postponeCount: 1 });
+    expect(needsOutcome(moved, '2026-11-26')).toBe(false);
+    const a = analyze(periodOf('month', '2026-11-10'), [], [], [], [], '2026-11-26', null, { tasks: await db.tasks.toArray(), categories: [] });
+    expect(a.agenda!.planned).toBe(0);
+    expect(a.agenda!.upcoming).toBe(1);
+    await undoReschedule(e);
+    const back = (await db.tasks.get(e.id))!;
+    expect(back.date).toBe('2026-11-19');
+    expect(back.time).toBe('14:00');
+    expect(back.originalDate).toBeUndefined();
+    expect(await db.tasks.count()).toBe(1);
+  });
+
+  it('un rendez-vous confirmé puis déplacé dans le futur redevient « à venir » et quitte le journal', async () => {
+    const { reschedule } = await import('../src/lib/agenda');
+    await db.trackers.put(T('tr-diner', 'sorties', 'Dîner'));
+    const e = await task({ title: 'Dîner resto', kind: 'event', date: '2026-11-20' });
+    const done = await setOutcome(e, 'happened');
+    expect((await db.daylogs.get('2026-11-20'))!.items).toHaveLength(1);
+    const moved = await reschedule(done, '2026-11-30', undefined, '2026-11-26');
+    expect(moved.outcome).toBeUndefined();
+    expect((await db.daylogs.get('2026-11-20'))!.items).toHaveLength(0);
+  });
+
+  it('une tâche de « Plus tard » reçoit une date', async () => {
+    const { reschedule } = await import('../src/lib/agenda');
+    const t = await task({ title: 'Trier photos', priority: 'could' });
+    const m = await reschedule(t, '2026-12-02', undefined, '2026-11-26');
+    expect(m.date).toBe('2026-12-02');
+    expect(m.originalDate).toBeUndefined();
+  });
+});

@@ -46,6 +46,21 @@
       "extra": "[\"tr-medecin\"]"
     },
     {
+      "name": "Priorités en couleur : étiquette « Absolument » sur la tâche",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Déplacer : la tâche quitte ma journée pour le lundi 30 novembre",
+      "pass": true,
+      "extra": ""
+    },
+    {
+      "name": "Déplacer : « Annuler » la remet aujourd’hui",
+      "pass": true,
+      "extra": ""
+    },
+    {
       "name": "Objectif d’octobre non terminé visible en novembre",
       "pass": true,
       "extra": ""
@@ -251,7 +266,7 @@
       "extra": "+0px"
     },
     {
-      "name": "116 boutons touchés sans erreur",
+      "name": "118 boutons touchés sans erreur",
       "pass": true,
       "extra": ""
     },

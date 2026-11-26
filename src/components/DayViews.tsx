@@ -167,8 +167,8 @@ export function DayAgenda({ tasks, ctx, empty, hideEvents }: { tasks: TaskView[]
             const list = todo.filter((t) => t.priority === p);
             if (!list.length) return null;
             return (
-              <div key={p} className="space-y-2">
-                <div className={`label ${p === 'must' ? 'text-rasp' : ''}`}>{PRIORITY_LABEL[p]}</div>
+              <div key={p} className={`prio-${p} space-y-2`} data-testid={`agenda-prio-${p}`}>
+                <PrioHead p={p} count={list.length} />
                 <TaskList tasks={list} ctx={ctx} />
               </div>
             );
@@ -188,14 +188,21 @@ export function DayAgenda({ tasks, ctx, empty, hideEvents }: { tasks: TaskView[]
   );
 }
 
+/** En-tête d'un groupe de priorité : un bandeau rayé (cerise, soleil, sakura) et l'étiquette posée dessus. */
+export function PrioHead({ p, count, done }: { p: Priority; count: number; done?: number }) {
+  return (
+    <div className={`prio-${p} prio-head prio-stripes h-8 px-1.5`}>
+      <span className="prio-tag">{PRIORITY_LABEL[p]}</span>
+      <span className="ml-auto rounded-full bg-card px-2 py-0.5 text-[11px] font-semibold shadow-soft" style={{ color: 'var(--pt)' }}>
+        {done !== undefined ? `${done}/${count}` : count}
+      </span>
+    </div>
+  );
+}
+
 export function PriorityBoard({ tasks, ctx }: { tasks: TaskView[]; ctx: DayCtx }) {
   const list = tasks.filter((t) => t.kind === 'task');
   const levels: Priority[] = ['must', 'should', 'could'];
-  const tint: Record<Priority, string> = {
-    must: 'from-rasp/15',
-    should: 'from-mauve/25',
-    could: 'from-blush',
-  };
   return (
     <div className="grid gap-3 lg:grid-cols-3">
       {levels.map((p) => {
@@ -204,7 +211,8 @@ export function PriorityBoard({ tasks, ctx }: { tasks: TaskView[]; ctx: DayCtx }
         return (
           <div
             key={p}
-            className={`rounded-2xl bg-gradient-to-b ${tint[p]} to-transparent p-3`}
+            className={`prio-${p} rounded-2xl p-3`}
+            style={{ background: 'linear-gradient(to bottom, var(--p2), transparent 70%)' }}
             onDragOver={(e) => e.preventDefault()}
             onDrop={async (e) => {
               const raw = e.dataTransfer.getData('text/task');
@@ -214,11 +222,8 @@ export function PriorityBoard({ tasks, ctx }: { tasks: TaskView[]; ctx: DayCtx }
               else await update<Task>('tasks', t.id, { priority: p });
             }}
           >
-            <div className="mb-2 flex items-center justify-between">
-              <h4 className="font-serif text-lg font-semibold text-plum">{PRIORITY_LABEL[p]}</h4>
-              <span className="text-xs text-soft">
-                {items.filter((t) => t.status === 'done').length}/{items.length}
-              </span>
+            <div className="mb-2">
+              <PrioHead p={p} count={items.length} done={items.filter((t) => t.status === 'done').length} />
             </div>
             <TaskList tasks={items} ctx={ctx} />
           </div>

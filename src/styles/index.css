@@ -97,3 +97,22 @@ input, textarea, select { font-size: 16px; }
 .font-serif {
   font-variant-numeric: lining-nums;
 }
+
+/* Priorités : trois couleurs franches inspirées des rayures cerise, soleil et sakura.
+   --p = couleur pleine, --p2 = fond clair, --pt = texte lisible sur --p2. */
+.prio-must   { --p: #A8153F; --p2: #F9D3DB; --pt: #8E0F33; }
+.prio-should { --p: #E9B730; --p2: #FCEFC0; --pt: #6B4A0E; }
+.prio-could  { --p: #D88A8C; --p2: #F6DCDD; --pt: #7F5836; }
+.dark .prio-must   { --p: #E04D74; --p2: #4A1626; --pt: #FFC2D1; }
+.dark .prio-should { --p: #F2C94C; --p2: #43360F; --pt: #FCE7A3; }
+.dark .prio-could  { --p: #E7A3A4; --p2: #45292B; --pt: #F6D0D1; }
+@layer components {
+  .prio-pill { @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold; background: var(--p2); color: var(--pt); }
+  .prio-dot { @apply inline-block h-2 w-2 shrink-0 rounded-full; background: var(--p); }
+  /* Rayures façon store de café : un bandeau à l'en-tête des groupes de priorité. */
+  .prio-stripes { background: repeating-linear-gradient(90deg, var(--p) 0 10px, var(--p2) 10px 20px); }
+  .prio-head { @apply flex items-center gap-2 overflow-hidden rounded-2xl; }
+  .prio-head > .prio-tag { @apply rounded-full bg-card px-3 py-1 text-xs font-semibold uppercase tracking-wider shadow-soft; color: var(--pt); }
+  .chip-prio-on { @apply border-transparent text-white; background: var(--p); }
+  .prio-should.chip-prio-on { color: #443025; }
+}

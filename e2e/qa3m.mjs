@@ -184,6 +184,15 @@ const kineLog = await page.evaluate(async () => {
   return (l?.items || []).filter((i) => i.fromEvent === 'tk-kine').map((i) => i.trackerId);
 });
 ok('Journal : le Kiné confirmé ajoute « Médecin » le 19 novembre', kineLog.includes('tr-medecin'), JSON.stringify(kineLog));
+ok('Priorités en couleur : étiquette « Absolument » sur la tâche', await page.locator('[data-testid=task-item]:has-text("Déclarer les impôts") [data-testid=prio-pill]:has-text("Absolument")').count());
+await page.locator('[data-testid=task-item]:has-text("Déclarer les impôts") [data-testid=move-btn]').click();
+await page.getByTestId('move-quick-Lundi prochain').click();
+await page.getByTestId('move-save').click();
+await page.waitForTimeout(500);
+ok('Déplacer : la tâche quitte ma journée pour le lundi 30 novembre', !(await page.locator('[data-testid=day-agenda] [data-testid=task-item]:has-text("Déclarer les impôts")').count()));
+await page.getByRole('button', { name: 'Annuler' }).click();
+await page.waitForTimeout(500);
+ok('Déplacer : « Annuler » la remet aujourd’hui', (await page.locator('[data-testid=day-agenda] [data-testid=task-item]:has-text("Déclarer les impôts")').count()) === 1);
 
 // Calendrier : objectif d'octobre non fait remonté en novembre ; projet multi-années
 await page.goto(BASE + '#/calendar');
