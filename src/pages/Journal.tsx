@@ -9,7 +9,7 @@ import { eur, parseAmount } from '../lib/finance';
 import { useToday } from '../lib/hooks';
 import { COLORS, Icon } from '../lib/icons';
 import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
-import { FEELINGS, FEELING_BY_ID, FEELING_GROUPS, FORMS, formOf, setJournalExpense } from '../lib/lifeforms';
+import { FEELINGS, FEELING_BY_ID, FEELING_ZONES, FORMS, formOf, setJournalExpense, zoneOf, type FeelingZone } from '../lib/lifeforms';
 import { FiveMinuteCard, SleepCard } from './JournalWell';
 import { eveningDone, morningDone } from '../lib/wellbeing';
 import { navigate, useRoute } from '../lib/ui-store';
@@ -178,10 +178,17 @@ export function MoodPicker({ date, value, size = 'md' }: { date: ISODate; value?
   );
 }
 
-/** États du jour : plusieurs à la fois, rangés par familles. Toucher une fois = léger, deux = moyen, trois = fort, quatre = retiré. */
+/**
+ * États du jour. HENDAYE a sa place à part, en haut. Les autres états sont rangés sur une carte à deux axes
+ * (énergie haute / basse × agréable / difficile) : on touche la zone qui ressemble à sa journée, puis les mots.
+ * Toucher un mot une fois = léger, deux = moyen, trois = fort, quatre = retiré.
+ */
 export function FeelingsPicker({ date, value }: { date: ISODate; value?: DayLog['feelings'] }) {
   const cur = value || [];
-  const [tab, setTab] = useState(FEELING_GROUPS[0].id);
+  const [zone, setZone] = useState<FeelingZone | null>(() => {
+    const first = cur.find((c) => c.id !== 'hendaye');
+    return first ? zoneOf(first.id) : null;
+  });
   const tap = (id: string) =>
     saveLog(date, (log) => {
       const list = log.feelings || [];
@@ -190,14 +197,21 @@ export function FeelingsPicker({ date, value }: { date: ISODate; value?: DayLog[
       if (f.level >= 3) return { feelings: list.filter((x) => x.id !== id) };
       return { feelings: list.map((x) => (x.id === id ? { ...x, level: x.level + 1 } : x)) };
     });
+  const dots = (level: number, cls = 'bg-white') => (
+    <span className="flex gap-0.5" aria-hidden>
+      {[1, 2, 3].map((i) => (
+        <span key={i} className={`h-1.5 w-1.5 rounded-full ${cls} ${i <= level ? '' : 'opacity-30'}`} />
+      ))}
+    </span>
+  );
   const chip = (f: (typeof FEELINGS)[number], testid: string) => {
     const on = cur.find((x) => x.id === f.id);
     return (
       <button
         key={f.id}
         onClick={() => tap(f.id)}
-        className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 py-1.5 transition active:scale-95 ${on ? 'text-white shadow-soft' : 'bg-blush/60 text-plum'} ${
-          f.id === 'hendaye' ? 'text-[12px] font-semibold tracking-[0.12em]' : 'font-serif text-[15px] italic'
+        className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 py-1.5 font-serif text-[15px] italic transition active:scale-95 ${
+          on ? 'border-transparent text-white shadow-soft' : 'border-line bg-card text-plum'
         }`}
         style={on ? { background: f.color } : undefined}
         aria-pressed={!!on}
@@ -205,40 +219,79 @@ export function FeelingsPicker({ date, value }: { date: ISODate; value?: DayLog[
         data-testid={testid}
       >
         {f.label}
-        {on && (
-          <span className="flex gap-0.5" aria-hidden>
-            {[1, 2, 3].map((i) => (
-              <span key={i} className={`h-1.5 w-1.5 rounded-full bg-white ${i <= on.level ? '' : 'opacity-30'}`} />
-            ))}
-          </span>
-        )}
+        {on && dots(on.level)}
       </button>
     );
   };
-  const selected = cur.map((c) => FEELING_BY_ID.get(c.id)).filter((f): f is (typeof FEELINGS)[number] => !!f && f.group !== tab);
+  const hend = cur.find((x) => x.id === 'hendaye');
+  const HEND_WORD = ['', 'un peu', 'bien', 'totale'];
+  const others = cur.map((c) => FEELING_BY_ID.get(c.id)).filter((f): f is (typeof FEELINGS)[number] => !!f && f.id !== 'hendaye');
+  const outside = others.filter((f) => zoneOf(f.id) !== zone);
   return (
-    <div className="space-y-2" data-testid="feelings">
-      <div className="flex flex-wrap gap-1">
-        {FEELING_GROUPS.map((g) => {
-          const n = cur.filter((c) => FEELING_BY_ID.get(c.id)?.group === g.id).length;
-          return (
-            <button
-              key={g.id}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${tab === g.id ? 'bg-plum text-white' : 'text-soft hover:text-plum'}`}
-              onClick={() => setTab(g.id)}
-              data-testid={`feelings-tab-${g.id}`}
-            >
-              {g.label}
-              {n > 0 && <span className={`ml-1 ${tab === g.id ? 'text-white/80' : 'text-rasp'}`}>· {n}</span>}
-            </button>
-          );
-        })}
+    <div className="space-y-3" data-testid="feelings">
+      <button
+        onClick={() => tap('hendaye')}
+        className={`flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left transition active:scale-[0.98] ${
+          hend ? 'text-white shadow-lift' : 'border border-dashed border-plum/30 text-plum'
+        }`}
+        style={hend ? { background: 'linear-gradient(120deg, #382332, #81265D 60%, #A83278)' } : undefined}
+        aria-pressed={!!hend}
+        aria-label={`HENDAYE${hend ? `, intensité ${hend.level} sur 3` : ''}`}
+        data-testid="feeling-hendaye"
+      >
+        <span>
+          <span className="block text-[15px] font-semibold tracking-[0.28em]">HENDAYE</span>
+          <span className={`block text-[11px] ${hend ? 'text-white/75' : 'text-soft'}`}>{hend ? `HENDAYE ${HEND_WORD[hend.level]}` : 'lendemain de soirée ? touche, retouche = plus fort'}</span>
+        </span>
+        {hend ? dots(hend.level) : null}
+      </button>
+
+      <div>
+        <div className="mb-1 flex justify-between px-1 text-[10px] uppercase tracking-[0.14em] text-soft">
+          <span>agréable</span>
+          <span>difficile</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {FEELING_ZONES.map((z) => {
+            const picked = others.filter((f) => zoneOf(f.id) === z.id);
+            const open = zone === z.id;
+            return (
+              <button
+                key={z.id}
+                onClick={() => setZone(open ? null : z.id)}
+                className={`relative min-h-[76px] rounded-2xl p-3 text-left transition active:scale-[0.98] ${open ? 'shadow-lift ring-2 ring-white/80' : ''}`}
+                style={{ background: `linear-gradient(135deg, ${z.from}, ${z.to}${open ? '' : 'bb'})`, color: z.ink }}
+                aria-expanded={open}
+                data-testid={`feelings-zone-${z.id}`}
+              >
+                <span className="block font-serif text-[17px] font-semibold italic leading-tight">{z.label}</span>
+                <span className="mt-0.5 block text-[10px] opacity-80">{z.hint}</span>
+                {picked.length > 0 && (
+                  <span className="mt-1.5 flex flex-wrap gap-1" data-testid={`feelings-zone-${z.id}-count`}>
+                    {picked.map((f) => (
+                      <span key={f.id} className="rounded-full bg-white/70 px-1.5 font-serif text-[11px] italic">
+                        {f.label}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="flex flex-wrap gap-1.5">{FEELINGS.filter((f) => f.group === tab).map((f) => chip(f, `feeling-${f.id}`))}</div>
-      {selected.length > 0 && (
+
+      {zone ? (
+        <div className="flex flex-wrap gap-1.5" data-testid="feelings-words">
+          {FEELINGS.filter((f) => f.id !== 'hendaye' && zoneOf(f.id) === zone).map((f) => chip(f, `feeling-${f.id}`))}
+        </div>
+      ) : (
+        <p className="text-center text-xs text-soft">Touche la zone qui ressemble à ta journée, puis choisis tes mots.</p>
+      )}
+      {outside.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 border-t border-line/60 pt-2">
           <span className="text-[11px] text-soft">Aussi aujourd'hui :</span>
-          {selected.map((f) => chip(f, `feeling-on-${f.id}`))}
+          {outside.map((f) => chip(f, `feeling-on-${f.id}`))}
         </div>
       )}
     </div>
@@ -512,7 +565,7 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
       <div className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-2">
           <div className="label">Mes états du jour</div>
-          <div className="text-[11px] text-soft">plusieurs possibles · retoucher = plus intense</div>
+          <div className="text-[11px] text-soft">plusieurs possibles · retoucher = plus fort</div>
         </div>
         <FeelingsPicker date={date} value={log?.feelings} />
       </div>

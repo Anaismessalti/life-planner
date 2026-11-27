@@ -161,6 +161,24 @@ export const FEELING_GROUPS: { id: string; label: string }[] = [
   { id: 'vibes', label: 'Vibes' },
   { id: 'low', label: 'Moins bien' },
 ];
+/**
+ * États du jour rangés sur deux axes : énergie (haute / basse) et ressenti (agréable / difficile).
+ * Plus parlant qu'une liste : on situe d'abord sa journée, puis on choisit les mots.
+ */
+export const FEELING_ZONES = [
+  { id: 'bright', label: 'bright & buzzing', hint: 'énergie haute · agréable', from: '#F6C9D9', to: '#E9B730', ink: '#7A2448' },
+  { id: 'wired', label: 'tense & wired', hint: 'énergie haute · difficile', from: '#F3D7C2', to: '#C0395A', ink: '#7A2436' },
+  { id: 'soft', label: 'soft & calm', hint: 'énergie basse · agréable', from: '#F5DFEC', to: '#C7A0C9', ink: '#5E3A6B' },
+  { id: 'heavy', label: 'low & heavy', hint: 'énergie basse · difficile', from: '#E6E0EA', to: '#5B6FB5', ink: '#33395E' },
+] as const;
+export type FeelingZone = (typeof FEELING_ZONES)[number]['id'];
+const ZONE_OF: Record<string, FeelingZone> = {
+  energized: 'bright', focused: 'bright', productive: 'bright', motivated: 'bright', inspired: 'bright', confident: 'bright', social: 'bright', 'in-love': 'bright', butterflies: 'bright',
+  stressed: 'wired', overwhelmed: 'wired', anxious: 'wired', irritated: 'wired', jealous: 'wired',
+  pretty: 'soft', lazy: 'soft', cozy: 'soft', peaceful: 'soft', grateful: 'soft', loved: 'soft', nostalgic: 'soft', free: 'soft',
+};
+export const zoneOf = (id: string): FeelingZone => ZONE_OF[id] || 'heavy';
+
 export const FEELINGS: { id: string; label: string; color: string; group: string }[] = [
   { id: 'hendaye', label: 'HENDAYE', color: '#81265D', group: 'body' },
   { id: 'sick', label: 'sick', color: '#3E9C9B', group: 'body' },

@@ -23,6 +23,8 @@ export function wrappedCards(a: Analytics, prev: Analytics): WrappedCard[] {
   const out: WrappedCard[] = [];
   out.push({ k: 'intro', big: a.period.label, small: `${a.logged} jour${a.logged > 1 ? 's' : ''} racontés · your life, wrapped`, from: '#81265D', to: '#E0789E' });
   if (mood) out.push({ k: 'mood', big: mood.label, italic: true, small: 'ton humeur dominante', from: '#382332', to: mood.color });
+  // HENDAYE, toujours là et en bonne place (même à zéro).
+  out.push({ k: 'hendaye', big: `HENDAYE × ${a.key.hendaye.days}`, small: a.key.hendaye.days ? 'lendemains qui piquent' : 'zéro lendemain difficile. Iconic.', from: '#382332', to: '#81265D' });
   if (feel) out.push({ k: 'feel', big: feel.label, italic: true, small: `ton état le plus fréquent · ${feel.days} j`, from: '#8E6BB0', to: feel.color });
   if (a.key.outings.days)
     out.push({
@@ -41,7 +43,6 @@ export function wrappedCards(a: Analytics, prev: Analytics): WrappedCard[] {
   if (a.sleep.avgMin) out.push({ k: 'sleep', big: fmtDuration(a.sleep.avgMin), small: `de sommeil par nuit · ${a.sleep.nights} nuit${a.sleep.nights > 1 ? 's' : ''}`, from: '#5B6FB5', to: '#382332' });
   if (a.fmj.gratitudes) out.push({ k: 'fmj', big: `${a.fmj.gratitudes} gratitudes`, small: `écrites en ${a.fmj.days} jour${a.fmj.days > 1 ? 's' : ''}`, from: '#E0789E', to: '#A83278' });
   if (a.agenda?.events) out.push({ k: 'agenda', big: `${a.agenda.events} rendez-vous`, small: `qui ont eu lieu · ${a.agenda.done} tâches cochées`, from: '#81265D', to: '#C7A0C9' });
-  out.push({ k: 'hendaye', big: `HENDAYE × ${a.key.hendaye.days}`, small: a.key.hendaye.days ? 'lendemains qui piquent' : 'zéro lendemain difficile. Iconic.', from: '#382332', to: '#81265D' });
   if (a.spent.total) out.push({ k: 'spent', big: eur(a.spent.total), small: 'notés dans ton journal (sorties, plaisirs)', from: '#C98A4B', to: '#A83278' });
   return out;
 }
@@ -102,7 +103,10 @@ export async function drawWrapped(cards: WrappedCard[]): Promise<Blob> {
   ctx.font = `400 32px ${SANS}`;
   ctx.fillText(intro?.small.split(' · ')[0] || '', 96, 190 + px + 80);
 
-  const list = rest.slice(0, 7);
+  // HENDAYE figure toujours sur l'image, même quand il y a beaucoup de cartes.
+  const hendaye = rest.find((c) => c.k === 'hendaye');
+  const list = [...rest.filter((c) => c.k !== 'hendaye').slice(0, hendaye ? 6 : 7)];
+  if (hendaye) list.splice(Math.min(2, list.length), 0, hendaye);
   const top = 520;
   const rowH = Math.min(185, (H - top - 180) / Math.max(1, list.length));
   list.forEach((card, i) => {
