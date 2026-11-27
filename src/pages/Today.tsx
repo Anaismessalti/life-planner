@@ -52,7 +52,7 @@ export function TodayPage() {
     () => expandTasks(all, addDays(today, -14), today).filter((t) => needsOutcome(t, today, nowMin)),
     [all, today, nowMin],
   );
-  const tomorrow = useMemo(() => expandTasks(all, addDays(today, 1), addDays(today, 1)).filter((t) => t.kind === 'event' && !t.outcome), [all, today]);
+  const tomorrow = useMemo(() => expandTasks(all, addDays(today, 1), addDays(today, 1)).filter((t) => t.kind === 'event' && !t.outcome && t.date === addDays(today, 1)), [all, today]);
 
   // À surveiller : échéances, argent du jour, budgets, projets.
   const in7 = addDays(today, 7);

@@ -69,7 +69,7 @@ export function lingering(all: Task[], today: ISODate): Task[] {
 /** La semaine qui vient : rendez-vous et échéances des 7 prochains jours. */
 export function upcoming(all: Task[], today: ISODate): TaskView[] {
   const end = addDays(today, 7);
-  const events = expandTasks(all, addDays(today, 1), end).filter((t) => t.kind === 'event' && !t.outcome);
+  const events = expandTasks(all, addDays(today, 1), end).filter((t) => t.kind === 'event' && !t.outcome && !!t.date && t.date > today);
   const due = all.filter((t) => isOpen(t) && t.dueDate && t.dueDate > today && t.dueDate <= end && t.kind === 'task');
   return [...events, ...due].sort((a, b) => ((a.kind === 'event' ? a.date : a.dueDate) || '').localeCompare((b.kind === 'event' ? b.date : b.dueDate) || ''));
 }

@@ -3,6 +3,7 @@
 import type { Task, TaskOutcome } from '../db/types';
 import { mergeItem, suggestFromEvent } from './bridge';
 import { materialize, type TaskView } from './tasks';
+import { addDays } from './dates';
 import { db, now, update } from '../db/db';
 import { saveLog } from '../pages/Journal';
 
@@ -53,6 +54,8 @@ export async function moveJournalWithEvent(t: Task, fromDate: string | undefined
 export async function reschedule(t: TaskView, date: string | undefined, time: string | undefined, today: string): Promise<Task> {
   const fromDate = t.date;
   const patch: Partial<Task> = { date, time: date ? time : undefined };
+  // Un séjour se déplace en entier : même nombre de jours.
+  if (t.endDate && t.date && date) patch.endDate = addDays(t.endDate, Math.round((Date.parse(date) - Date.parse(t.date)) / 864e5));
   if (fromDate && date && date !== fromDate) {
     patch.originalDate = t.originalDate || fromDate;
     patch.postponeHistory = [...(t.postponeHistory || []), { from: fromDate, to: date, at: now() }].slice(-10);
@@ -80,6 +83,7 @@ export async function undoReschedule(before: TaskView) {
   await update<Task>('tasks', before.id, {
     date: before.date,
     time: before.time,
+    endDate: before.endDate,
     originalDate: before.originalDate,
     postponeHistory: before.postponeHistory,
     postponeCount: before.postponeCount,

@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, FolderHeart, Inbox, Plus, Target } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FolderHeart, Inbox, Plane, Plus, Target } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { DayAgenda, PaymentsList, Planning, PriorityBoard, TaskList, quickMove, type DayCtx } from '../components/DayViews';
 import { TaskItem } from '../components/TaskItem';
@@ -19,7 +19,7 @@ import {
 } from '../lib/dates';
 import { eur, financeOccurrencesIn, togglePayment } from '../lib/finance';
 import { useAllTasks, useCategoryMap, useFinance, useMedia, useProjects, useToday } from '../lib/hooks';
-import { expandTasks, isOpen, type TaskView } from '../lib/tasks';
+import { expandTasks, isMultiDay, isOpen, spansDay, type TaskView } from '../lib/tasks';
 import { navigate, openEditor, useRoute } from '../lib/ui-store';
 
 type Mode = 'day' | 'week' | 'month' | 'inbox';
@@ -139,7 +139,7 @@ function DayView({ date, all, ctx, finance }: { date: ISODate; all: Task[]; ctx:
         </Section>
       )}
       {sub === 'planning' && <Planning tasks={day} ctx={ctx} date={date} />}
-      {sub === 'list' && <DayAgenda tasks={day} ctx={ctx} empty="Rien de prévu ce jour-là." />}
+      {sub === 'list' && <DayAgenda tasks={day} ctx={ctx} date={date} empty="Rien de prévu ce jour-là." />}
       {sub === 'priorities' && <PriorityBoard tasks={day} ctx={ctx} />}
       <button className="btn-soft" onClick={() => openEditor({ type: 'task', defaults: { date } })}>
         <Plus size={16} /> Ajouter ce jour-là
@@ -180,7 +180,7 @@ function WeekView({
   return (
     <div className={wide ? 'grid grid-cols-7 gap-2' : 'space-y-3'}>
       {days.map((d, i) => {
-        const items = tasks.filter((t) => t.date === d);
+        const items = tasks.filter((t) => spansDay(t, d));
         const dpay = pay.filter((p) => p.date === d);
         const load = loadOf(items);
         const isToday = d === ctx.today;
@@ -220,7 +220,7 @@ function WeekView({
             {load.level > 0 && <div className="h-1 rounded-full" style={{ background: LOAD_COLOR[load.level], opacity: 0.6 }} />}
             {items.map((t) => (
               <div key={t.id} className="group relative">
-                <TaskItem t={t} today={ctx.today} cat={t.categoryId ? ctx.cats.get(t.categoryId) : undefined} compact />
+                <TaskItem t={t} today={ctx.today} day={d} cat={t.categoryId ? ctx.cats.get(t.categoryId) : undefined} compact />
                 {t.kind === 'task' && isOpen(t) && (
                   <div className={`absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5 ${wide ? 'opacity-0 group-hover:opacity-100' : ''}`}>
                     <button
@@ -280,7 +280,7 @@ function MonthView({
   const days = range(gridStart, addDays(gridStart, 41));
   const tasks = useMemo(() => expandTasks(all, days[0], days[41]), [all, days[0]]);
   const pay = financeOccurrencesIn(finance, days[0], days[41]);
-  const selItems = tasks.filter((t) => t.date === sel);
+  const selItems = tasks.filter((t) => spansDay(t, sel));
   const selPay = pay.filter((p) => p.date === sel);
 
   // Objectifs du mois ; ceux des mois passés non terminés remontent dans le mois en cours (rien n'est oublié).
@@ -303,12 +303,15 @@ function MonthView({
       </div>
       <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
         {days.map((d) => {
-          const items = tasks.filter((t) => t.date === d);
+          const items = tasks.filter((t) => spansDay(t, d));
           const dpay = pay.filter((p) => p.date === d);
           const out = monthOf(d) !== month;
           const isSel = d === sel;
           const isToday = d === ctx.today;
-          const dots = items.slice(0, 4).map((t) => (t.categoryId && ctx.cats.get(t.categoryId)?.color) || '#A83278');
+          const stays = items.filter(isMultiDay);
+          // Vue du mois = vue d'ensemble : les rendez-vous (pas les tâches), et les séjours en bandes.
+          const dots = items.filter((t) => t.kind === 'event' && !isMultiDay(t)).slice(0, 4).map((t) => (t.categoryId && ctx.cats.get(t.categoryId)?.color) || '#A83278');
+          const wd = (new Date(d + 'T12:00').getDay() + 6) % 7;
           return (
             <button
               key={d}
@@ -325,6 +328,20 @@ function MonthView({
                 ))}
                 {dpay.length > 0 && <span className={`text-[9px] font-bold leading-none ${isSel ? 'text-white' : 'text-plum'}`}>€</span>}
               </span>
+              {stays.slice(0, 2).map((t) => {
+                const first = t.date === d || wd === 0;
+                const last = t.endDate === d || wd === 6;
+                const c = (t.categoryId && ctx.cats.get(t.categoryId)?.color) || '#C7A0C9';
+                return (
+                  <span
+                    key={t.id}
+                    className={`-mx-1 mb-0.5 block h-1.5 self-stretch ${first ? 'ml-0.5 rounded-l-full' : ''} ${last ? 'mr-0.5 rounded-r-full' : ''}`}
+                    style={{ background: isSel ? '#fff' : c }}
+                    title={t.title}
+                    data-testid="month-stay"
+                  />
+                );
+              })}
               {wide && items.length > 0 && (
                 <span className={`hidden w-full truncate text-[10px] leading-tight lg:block ${isSel ? 'text-white/90' : 'text-soft'}`}>{items[0].title}</span>
               )}
@@ -366,6 +383,48 @@ function MonthView({
     </Section>
   );
 
+  const monthEnd = addDays(monthStart(addMonths(month, 1)), -1);
+  const staysOfMonth = tasks
+    .filter((t) => isMultiDay(t) && t.date! <= monthEnd && t.endDate! >= monthStart(month) && t.outcome !== 'cancelled')
+    .filter((t, i, arr) => arr.findIndex((x) => x.id === t.id) === i)
+    .sort((a, b) => a.date!.localeCompare(b.date!));
+  const staysPanel = (
+    <Section
+      title={
+        <span className="inline-flex items-center gap-2">
+          <Plane size={18} className="text-rasp" /> Voyages et séjours
+        </span>
+      }
+      action={
+        <button className="btn-soft py-1.5 text-xs" onClick={() => openEditor({ type: 'task', defaults: { kind: 'event', date: sel, endDate: addDays(sel, 2) } })} data-testid="add-stay">
+          + Prévoir
+        </button>
+      }
+    >
+      {staysOfMonth.length ? (
+        <div className="space-y-2" data-testid="month-stays">
+          {staysOfMonth.map((t) => {
+            const c = (t.categoryId && ctx.cats.get(t.categoryId)?.color) || '#C7A0C9';
+            const n = Math.round((Date.parse(t.endDate!) - Date.parse(t.date!)) / 864e5) + 1;
+            return (
+              <button key={t.id} className="card flex w-full items-center gap-3 p-3 text-left" onClick={() => openEditor({ type: 'task', task: t })}>
+                <span className="h-10 w-1.5 shrink-0 rounded-full" style={{ background: c }} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{t.title}</span>
+                  <span className="block text-xs text-soft">
+                    du {fmt(t.date!, 'EEE d')} au {fmt(t.endDate!, 'EEE d MMMM')} · {n} jours{t.location ? ` · ${t.location}` : ''}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-soft">Aucun voyage ni séjour ce mois-ci. Un week-end, une visite, des vacances : prévois-les ici, ils s’affichent en bande sur le calendrier.</p>
+      )}
+    </Section>
+  );
+
   const dayPanel = (
     <Section
       title={capitalize(fmt(sel, 'EEEE d MMMM'))}
@@ -376,7 +435,7 @@ function MonthView({
       }
     >
       <PaymentsList items={selPay} onToggle={togglePayment} />
-      <TaskList tasks={selItems} ctx={ctx} empty="Rien de prévu ce jour-là" />
+      <TaskList tasks={selItems} ctx={{ ...ctx, day: sel }} empty="Rien de prévu ce jour-là" />
     </Section>
   );
 
@@ -387,12 +446,16 @@ function MonthView({
           {grid}
           {dayPanel}
         </div>
-        <div className="space-y-6">{goalsPanel}</div>
+        <div className="space-y-6">
+          {staysPanel}
+          {goalsPanel}
+        </div>
       </div>
     );
   return (
     <div className="space-y-6">
       {grid}
+      {staysPanel}
       {dayPanel}
       {goalsPanel}
     </div>

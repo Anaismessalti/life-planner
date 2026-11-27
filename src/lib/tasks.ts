@@ -16,9 +16,23 @@ export const PRIORITY_SHORT: Record<Priority, string> = { must: 'Absolument', sh
 /** Terminée, ou close autrement (annulée, plus nécessaire…) : ne se reporte plus et ne compte plus comme « à faire ». */
 export const isClosed = (t: Task) => t.status === 'done' || !!t.outcome;
 export const isOpen = (t: Task) => !t.deleted && !isClosed(t);
+/** Rendez-vous sur plusieurs jours (séjour, voyage) ? */
+export const isMultiDay = (t: Task) => t.kind === 'event' && !!t.date && !!t.endDate && t.endDate > t.date;
+/** Le rendez-vous occupe-t-il ce jour (premier jour, ou un jour du séjour) ? */
+export const spansDay = (t: Task, d: ISODate) => t.date === d || (isMultiDay(t) && t.date! < d && d <= t.endDate!);
+/** Jour n sur N d'un séjour (1 = arrivée). */
+export function stayDay(t: Task, d: ISODate) {
+  if (!isMultiDay(t)) return undefined;
+  const n = Math.round((Date.parse(d) - Date.parse(t.date!)) / 864e5) + 1;
+  const total = Math.round((Date.parse(t.endDate!) - Date.parse(t.date!)) / 864e5) + 1;
+  return n >= 1 && n <= total ? { n, total } : undefined;
+}
+
 /** Un rendez-vous passé dont on ne sait pas encore s'il a eu lieu. */
 export function needsOutcome(t: Task, today: ISODate, nowMin?: number) {
   if (t.kind !== 'event' || t.deleted || t.outcome || !t.date) return false;
+  // Un séjour se confirme une fois terminé.
+  if (isMultiDay(t)) return t.endDate! < today;
   if (t.date < today) return true;
   if (t.date > today || nowMin === undefined || !t.time) return false;
   const [h, m] = t.time.split(':').map(Number);
@@ -67,7 +81,7 @@ export function expandTasks(all: Task[], from: ISODate, to: ISODate): TaskView[]
           virtual: true,
         });
       }
-    } else if (t.date && t.date >= from && t.date <= to) {
+    } else if (t.date && t.date <= to && (isMultiDay(t) ? t.endDate! : t.date) >= from) {
       out.push(t);
     }
   }

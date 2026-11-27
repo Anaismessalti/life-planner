@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import type { Category, Priority, Project, Task } from '../db/types';
 import { timeToMin } from '../lib/dates';
 import { eur, parseAmount, setPaymentAmount, type Occurrence } from '../lib/finance';
-import { PRIORITY_LABEL, isClosed, materialize, moveTask, type TaskView } from '../lib/tasks';
+import { PRIORITY_LABEL, isClosed, isMultiDay, materialize, moveTask, type TaskView } from '../lib/tasks';
 import { update } from '../db/db';
 import { openEditor } from '../lib/ui-store';
 import { TaskItem } from './TaskItem';
@@ -13,6 +13,8 @@ export interface DayCtx {
   today: string;
   cats: Map<string, Category>;
   projects: Map<string, Project>;
+  /** Jour affiché (pour « jour 2 sur 3 » d'un séjour), aujourd'hui par défaut. */
+  day?: string;
 }
 
 export function TaskList({ tasks, ctx, showDate, empty }: { tasks: TaskView[]; ctx: DayCtx; showDate?: boolean; empty?: string }) {
@@ -24,6 +26,7 @@ export function TaskList({ tasks, ctx, showDate, empty }: { tasks: TaskView[]; c
           key={t.id}
           t={t}
           today={ctx.today}
+          day={ctx.day}
           cat={t.categoryId ? ctx.cats.get(t.categoryId) : undefined}
           projectName={t.projectId ? ctx.projects.get(t.projectId)?.title : undefined}
           showDate={showDate}
@@ -37,8 +40,9 @@ const HOUR = 56;
 
 /** Planning vertical heure par heure. */
 export function Planning({ tasks, ctx, date }: { tasks: TaskView[]; ctx: DayCtx; date: string }) {
-  const timed = tasks.filter((t) => t.time && !(t.outcome && t.outcome !== 'happened'));
-  const allDay = tasks.filter((t) => !t.time && t.kind === 'event');
+  const ongoing = (t: TaskView) => isMultiDay(t) && !!t.date && t.date < date;
+  const timed = tasks.filter((t) => t.time && !ongoing(t) && !(t.outcome && t.outcome !== 'happened'));
+  const allDay = tasks.filter((t) => (!t.time || ongoing(t)) && t.kind === 'event');
   const untimed = tasks.filter((t) => !t.time && t.kind === 'task');
   const startH = Math.min(7, ...timed.map((t) => Math.floor(timeToMin(t.time!) / 60)));
   const endH = Math.max(22, ...timed.map((t) => Math.ceil((timeToMin(t.time!) + (t.duration || 30)) / 60)));
@@ -138,12 +142,15 @@ export function Planning({ tasks, ctx, date }: { tasks: TaskView[]; ctx: DayCtx;
  * La journée en un coup d'œil : les rendez-vous et ce qui a une heure, dans l'ordre ;
  * puis les tâches sans horaire, rangées par priorité. Les éléments faits ou clos se replient en bas.
  */
-export function DayAgenda({ tasks, ctx, empty, hideEvents }: { tasks: TaskView[]; ctx: DayCtx; empty?: string; hideEvents?: boolean }) {
+export function DayAgenda({ tasks, ctx: base, empty, hideEvents, date }: { tasks: TaskView[]; ctx: DayCtx; empty?: string; hideEvents?: boolean; date?: string }) {
+  const ctx = date ? { ...base, day: date } : base;
   const [showDone, setShowDone] = useState(false);
   const closed = tasks.filter((t) => (t.kind === 'task' && isClosed(t)) || (t.kind === 'event' && t.outcome && t.outcome !== 'happened'));
   const open = tasks.filter((t) => !closed.includes(t));
-  const allDay = open.filter((t) => t.kind === 'event' && !t.time);
-  const timed = open.filter((t) => t.time && (!hideEvents || t.kind === 'task')).sort((a, b) => a.time!.localeCompare(b.time!));
+  // Un séjour déjà commencé occupe toute la journée (son heure d'arrivée ne compte que le premier jour).
+  const ongoing = (t: TaskView) => isMultiDay(t) && !!t.date && t.date < (date || ctx.today);
+  const allDay = open.filter((t) => t.kind === 'event' && (!t.time || ongoing(t)));
+  const timed = open.filter((t) => t.time && !ongoing(t) && (!hideEvents || t.kind === 'task')).sort((a, b) => a.time!.localeCompare(b.time!));
   const todo = open.filter((t) => t.kind === 'task' && !t.time);
   const levels: Priority[] = ['must', 'should', 'could'];
   if (!tasks.length) return <Empty icon={<Inbox size={20} />}>{empty || 'Rien de prévu.'}</Empty>;

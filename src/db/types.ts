@@ -51,6 +51,8 @@ export interface Task extends BaseRecord {
   time?: HHmm;
   /** Durée en minutes. */
   duration?: number;
+  /** Rendez-vous sur plusieurs jours (séjour, voyage, visite) : dernier jour inclus. */
+  endDate?: ISODate;
   /** Échéance réelle : jamais modifiée automatiquement. */
   dueDate?: ISODate;
   /** Mois visé sans jour précis (objectifs du mois). */

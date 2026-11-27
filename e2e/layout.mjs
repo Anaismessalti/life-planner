@@ -27,6 +27,7 @@ const SCREENS = [
   ['rituel-du-soir', async (p) => (await p.goto(BASE + '#/today'), p.getByTestId('evening-ritual-open').click())],
   ['rituel-souvenir', async (p) => (await p.goto(BASE + '#/today'), await p.getByTestId('evening-ritual-open').click(), p.getByTestId('ritual-next').click())],
   ['essentiels', async (p) => (await p.goto(BASE + '#/today'), p.locator('[data-testid=essentials-pick], [data-testid=essentials-edit]').first().click())],
+  ['sejour-editeur', async (p) => (await p.goto(BASE + '#/calendar'), await p.getByTestId('add-stay').click(), p.getByTestId('multi-day').getByRole('button', { name: '3 jours' }).click())],
   ['nouveau-revenu', async (p) => (await p.goto(BASE + '#/budget'), await p.getByRole('button', { name: 'Revenus', exact: true }).click(), p.locator('button.btn-primary:has-text("Revenu")').first().click())],
 ];
 mkdirSync('e2e/shots/layout', { recursive: true });

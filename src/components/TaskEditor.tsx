@@ -17,7 +17,7 @@ type RecMode = 'none' | Freq | 'custom';
 const WD_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const WD_VALUES = [1, 2, 3, 4, 5, 6, 0];
 
-const EDITABLE: (keyof Task)[] = ['title', 'description', 'categoryId', 'priority', 'date', 'time', 'duration', 'dueDate', 'targetMonth', 'location', 'subtasks', 'recurrence', 'projectId', 'milestoneId', 'autoPostpone', 'remindBefore', 'kind', 'status', 'outcome'];
+const EDITABLE: (keyof Task)[] = ['title', 'description', 'categoryId', 'priority', 'date', 'time', 'duration', 'endDate', 'dueDate', 'targetMonth', 'location', 'subtasks', 'recurrence', 'projectId', 'milestoneId', 'autoPostpone', 'remindBefore', 'kind', 'status', 'outcome'];
 /** Les champs modifiés dans le formulaire (undefined = effacé). */
 function diff(before: Partial<Task>, after: Partial<Task>): Partial<Task> {
   const out: Partial<Task> = {};
@@ -46,6 +46,9 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
   const [newSub, setNewSub] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
   const set = (p: Partial<Task>) => setF((x) => ({ ...x, ...p }));
+  // Déplacer le premier jour d'un séjour déplace tout le séjour (même durée).
+  const setDate = (date?: string) =>
+    setF((x) => (date && x.date && x.endDate ? { ...x, date, endDate: addDays(x.endDate, Math.round((Date.parse(date) - Date.parse(x.date)) / 864e5)) } : { ...x, date }));
   const isEvent = f.kind === 'event';
   const series = task?.virtual || task?.seriesId ? task.seriesId : undefined;
 
@@ -90,10 +93,12 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
     }
     if (data.recurrence && !data.date) data.date = today;
     if (data.kind === 'event' && !data.date) data.date = today;
+    // Plusieurs jours : seulement pour un rendez-vous, et une fin après le début.
+    if (data.kind !== 'event' || !data.date || !data.endDate || data.endDate <= data.date || data.recurrence) data.endDate = undefined;
     if (data.date) data.targetMonth = data.targetMonth && !data.date ? data.targetMonth : undefined;
 
     // Un rendez-vous ajouté après coup (date passée) a forcément eu lieu.
-    if (isNew && data.kind === 'event' && data.date && data.date < today && !data.outcome) data.outcome = 'happened';
+    if (isNew && data.kind === 'event' && data.date && (data.endDate || data.date) < today && !data.outcome) data.outcome = 'happened';
 
     if (isNew) {
       const saved = await create<Task>('tasks', data as any);
@@ -229,7 +234,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
               type="button"
               key={c.label}
               className={`chip ${f.date === c.value ? 'chip-on' : ''}`}
-              onClick={() => set({ date: c.value })}
+              onClick={() => setDate(c.value)}
             >
               {c.label}
             </button>
@@ -238,7 +243,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
             type="date"
             className="chip"
             value={f.date || ''}
-            onChange={(e) => set({ date: e.target.value || undefined })}
+            onChange={(e) => setDate(e.target.value || undefined)}
             aria-label="Date"
           />
         </div>
@@ -266,9 +271,48 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
           </Field>
         )}
 
+        {isEvent && !rec && (
+          <div className="space-y-2" data-testid="multi-day">
+            <Toggle
+              checked={!!f.endDate}
+              onChange={(v) => set({ endDate: v ? addDays(f.date || today, 2) : undefined })}
+              label={<span>Sur plusieurs jours <span className="text-xs text-soft">(séjour, voyage, visite)</span></span>}
+            />
+            {f.endDate && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ['2 jours', 1],
+                    ['3 jours', 2],
+                    ['Un week-end', -1],
+                    ['1 semaine', 6],
+                  ].map(([label, n]) => {
+                    const start = f.date || today;
+                    const sat = addDays(start, (5 - ((new Date(start + 'T12:00').getDay() + 6) % 7) + 7) % 7);
+                    const end = n === -1 ? addDays(sat, 1) : addDays(start, n as number);
+                    return (
+                      <button type="button" key={label as string} className={`chip ${f.endDate === end ? 'chip-on' : ''}`} onClick={() => set(n === -1 ? { date: sat, endDate: end } : { endDate: end })}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Field label="Jusqu'au (inclus)">
+                  <input type="date" className="input" min={f.date} value={f.endDate} onChange={(e) => set({ endDate: e.target.value || undefined })} data-testid="event-end" />
+                </Field>
+                {f.date && f.endDate > f.date && (
+                  <p className="text-xs text-soft">
+                    {Math.round((Date.parse(f.endDate) - Date.parse(f.date)) / 864e5) + 1} jours, du {fmt(f.date, 'EEEE d')} au {fmt(f.endDate, 'EEEE d MMMM')}. Visible chaque jour dans ton agenda.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {(isEvent || more) && (
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Heure">
+            <Field label={f.endDate ? "Heure d'arrivée" : 'Heure'}>
               <input type="time" className="input" value={f.time || ''} onChange={(e) => set({ time: e.target.value || undefined })} />
             </Field>
             <Field label="Durée (min)">

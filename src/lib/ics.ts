@@ -30,9 +30,10 @@ export async function buildICS(remindMin = 30): Promise<string> {
       const s = timeToMin(t.time);
       const e = s + (t.duration || (t.kind === 'event' ? 60 : 30));
       const hm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}${String(m % 60).padStart(2, '0')}00`;
-      lines.push(`DTSTART:${d8(t.date!)}T${hm(s)}`, `DTEND:${e >= 1440 ? d8(addDays(t.date!, 1)) + 'T000000' : d8(t.date!) + 'T' + hm(e)}`);
+      if (t.endDate && t.endDate > t.date!) lines.push(`DTSTART:${d8(t.date!)}T${hm(s)}`, `DTEND:${d8(addDays(t.endDate, 1))}T000000`);
+      else lines.push(`DTSTART:${d8(t.date!)}T${hm(s)}`, `DTEND:${e >= 1440 ? d8(addDays(t.date!, 1)) + 'T000000' : d8(t.date!) + 'T' + hm(e)}`);
     } else {
-      lines.push(`DTSTART;VALUE=DATE:${d8(t.date!)}`, `DTEND;VALUE=DATE:${d8(addDays(t.date!, 1))}`);
+      lines.push(`DTSTART;VALUE=DATE:${d8(t.date!)}`, `DTEND;VALUE=DATE:${d8(addDays(t.endDate && t.endDate > t.date! ? t.endDate : t.date!, 1))}`);
     }
     if (t.location) lines.push(`LOCATION:${esc(t.location)}`);
     if (t.description) lines.push(`DESCRIPTION:${esc(t.description)}`);

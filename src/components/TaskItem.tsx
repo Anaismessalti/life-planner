@@ -1,9 +1,9 @@
 import { CalendarClock, CalendarPlus, Check, ChevronDown, Clock, FolderHeart, History, ListChecks, MapPin, Repeat, X } from 'lucide-react';
 import { useState } from 'react';
 import type { Category } from '../db/types';
-import { diffDays, relativeDay } from '../lib/dates';
+import { diffDays, fmt, relativeDay } from '../lib/dates';
 import { OUTCOME_LABEL, setOutcome } from '../lib/agenda';
-import { PRIORITY_SHORT, STUCK_AFTER, isPostponed, moveTask, needsOutcome, postponeCount, setDone, toggleSubtask, type TaskView } from '../lib/tasks';
+import { PRIORITY_SHORT, STUCK_AFTER, isMultiDay, stayDay, isPostponed, moveTask, needsOutcome, postponeCount, setDone, toggleSubtask, type TaskView } from '../lib/tasks';
 import { MoveSheet } from './MoveSheet';
 import { openEditor } from '../lib/ui-store';
 import { toast } from './ui';
@@ -13,6 +13,7 @@ export function TaskItem({
   cat,
   projectName,
   today,
+  day,
   compact,
   showDate,
 }: {
@@ -20,6 +21,7 @@ export function TaskItem({
   cat?: Category;
   projectName?: string;
   today: string;
+  day?: string;
   compact?: boolean;
   showDate?: boolean;
 }) {
@@ -87,12 +89,17 @@ export function TaskItem({
         <div className={`truncate ${compact ? 'text-sm' : 'text-[15px]'} font-medium ${(done && !isEvent) || closedOther ? 'line-through' : ''}`}>{t.title}</div>
         {!compact && (
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-soft">
-            {showDate && t.date && <span>{relativeDay(t.date, today)}</span>}
-            {t.time && (
+            {showDate && t.date && !isMultiDay(t) && <span>{relativeDay(t.date, today)}</span>}
+            {isMultiDay(t) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blush px-1.5 font-medium text-plum" data-testid="stay">
+                {stayDay(t, day || today) ? `jour ${stayDay(t, day || today)!.n} sur ${stayDay(t, day || today)!.total} · ` : ''}du {fmt(t.date!, 'EEE d')} au {fmt(t.endDate!, 'EEE d MMM')}
+              </span>
+            )}
+            {t.time && (!isMultiDay(t) || (day || today) === t.date) && (
               <span className="inline-flex items-center gap-1">
                 <Clock size={11} />
-                {t.time}
-                {t.duration ? ` · ${t.duration} min` : ''}
+                {isMultiDay(t) ? `arrivée ${t.time}` : t.time}
+                {t.duration && !isMultiDay(t) ? ` · ${t.duration} min` : ''}
               </span>
             )}
             {t.location && (
