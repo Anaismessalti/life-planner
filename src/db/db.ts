@@ -5,6 +5,7 @@ import type {
   Category,
   Collection,
   Contact,
+  DayPhoto,
   DayLog,
   Expense,
   FixedExpense,
@@ -47,6 +48,7 @@ export class PlannerDB extends Dexie {
   trackers!: Table<Tracker, string>;
   daylogs!: Table<DayLog, string>;
   contacts!: Table<Contact, string>;
+  photos!: Table<DayPhoto, string>;
   /** Données propres à l'appareil, jamais synchronisées. */
   meta!: Table<MetaRecord, string>;
   /** File d'attente des enregistrements modifiés localement, à envoyer au serveur. */
@@ -77,6 +79,8 @@ export class PlannerDB extends Dexie {
     });
     // Version 3 : proches et lieux du journal
     this.version(3).stores({ contacts: 'id, kind, order, updatedAt' });
+    // v4 : la photo du jour (table à part, rien n'est modifié dans les tables existantes).
+    this.version(4).stores({ photos: 'id, date, updatedAt' });
   }
 
   table_(name: TableName): Table<BaseRecord, string> {

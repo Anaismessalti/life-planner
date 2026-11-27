@@ -82,6 +82,18 @@ await B.page.goto(BASE + '#/today');
 await B.page.waitForTimeout(400);
 ok('Suppression propagée au Mac', !(await B.page.locator('[data-testid=task-item]:has-text("Tâche créée avant la synchro")').count()));
 
+// Photo du jour : faite sur l'iPhone, retrouvée sur le Mac
+await A.page.goto(BASE + '#/journal');
+await A.page.waitForTimeout(400);
+const png = Buffer.from(await A.page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1600; c.height = 1200; const g = c.getContext('2d'); for (let i = 0; i < 300; i++) { g.fillStyle = `hsl(${i * 23} 60% 50%)`; g.fillRect((i * 71) % 1600, (i * 43) % 1200, 120, 90); } return c.toDataURL('image/png').split(',')[1]; }), 'base64');
+await A.page.getByTestId('photo-input').setInputFiles({ name: 'p.png', mimeType: 'image/png', buffer: png });
+await A.page.getByTestId('photo-preview').waitFor({ timeout: 8000 });
+await sync(A.page);
+await sync(B.page);
+await B.page.goto(BASE + '#/journal');
+await B.page.waitForTimeout(600);
+ok('Photo du jour synchronisée sur le Mac', await B.page.getByTestId('photo-preview').count());
+
 // Isolation : un autre compte ne voit rien
 const C = await device('Intrus', devices['iPhone 13']);
 await C.page.locator('textarea[placeholder*="firebaseConfig"]').fill(CFG);

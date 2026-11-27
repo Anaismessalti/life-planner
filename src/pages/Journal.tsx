@@ -11,6 +11,7 @@ import { COLORS, Icon } from '../lib/icons';
 import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
 import { FEELINGS, FEELING_BY_ID, FEELING_ZONES, FORMS, formOf, setJournalExpense, zoneOf, type FeelingZone } from '../lib/lifeforms';
 import { FiveMinuteCard, SleepCard } from './JournalWell';
+import { DayMemoryFields } from '../components/Memories';
 import { eveningDone, morningDone } from '../lib/wellbeing';
 import { navigate, useRoute } from '../lib/ui-store';
 import { AnalyticsView } from './Analytics';
@@ -553,6 +554,8 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
       <div className="space-y-2">
         <MoodPicker date={date} value={log?.mood} />
       </div>
+
+      <DayMemoryFields key={`mem-${date}`} date={date} log={log} />
 
       <div className="space-y-2">
         <div className="flex items-baseline justify-between gap-2">

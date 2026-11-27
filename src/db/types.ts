@@ -256,6 +256,19 @@ export interface DayLog extends BaseRecord {
   fmj?: FiveMinute;
   /** Journée douce : les habitudes ne comptent pas ce jour-là. */
   soft?: boolean;
+  /** Le titre de la journée, comme un chapitre (« Le jour du Perchoir »). */
+  title?: string;
+  /** Le moment fort, en une phrase : ce qu'on veut garder de la journée. */
+  highlight?: string;
+  /** Rituel du soir terminé (horodatage). */
+  closedAt?: number;
+}
+
+/** La photo du jour (id = date), compressée sur l'appareil, gardée à part pour ne pas alourdir le journal. */
+export interface DayPhoto extends BaseRecord {
+  date: ISODate;
+  /** Image JPEG en data URL (environ 150 Ko au plus). */
+  data: string;
 }
 
 export interface DaySleep {
@@ -296,7 +309,8 @@ export type TableName =
   | 'settings'
   | 'trackers'
   | 'daylogs'
-  | 'contacts';
+  | 'contacts'
+  | 'photos';
 
 export const SYNC_TABLES: TableName[] = [
   'tasks',
@@ -314,4 +328,5 @@ export const SYNC_TABLES: TableName[] = [
   'trackers',
   'daylogs',
   'contacts',
+  'photos',
 ];

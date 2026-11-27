@@ -2,7 +2,8 @@
 // Ordre : ce qui demande une réponse, la journée (rendez-vous puis tâches), les habitudes, ce qui arrive, le journal.
 // Le soir, le journal remonte en premier.
 import { AlertCircle, CalendarClock, ChevronRight, Settings as Cog } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { EveningCard, EveningRitual, OnThisDay } from '../components/Memories';
 import { DayAgenda, PaymentsList, TaskList, type DayCtx } from '../components/DayViews';
 import { FmjNudge, HabitsWeek } from '../components/TodayJournal';
 import { TaskItem } from '../components/TaskItem';
@@ -81,8 +82,13 @@ export function TodayPage() {
     });
   };
 
+  const [ritual, setRitual] = useState(false);
+  const trackerName = (id: string) => trackers.find((t) => t.id === id)?.name;
   const journal = (
-    <JournalBlock key="journal" today={today} log={todayLog} evening={evening} />
+    <div key="journal" className="space-y-3">
+      {evening && <EveningCard today={today} log={todayLog} onOpen={() => setRitual(true)} />}
+      <JournalBlock today={today} log={todayLog} evening={evening} />
+    </div>
   );
 
   return (
@@ -159,6 +165,8 @@ export function TodayPage() {
         <DayAgenda tasks={day.filter((t) => !needsOutcome(t, today, nowMin))} ctx={ctx} empty="Rien de prévu aujourd’hui. Profite, ou ajoute ce qui te trotte dans la tête." />
       </Section>
 
+      <OnThisDay logs={logs as DayLog[]} today={today} trackerName={trackerName} />
+
       <HabitsWeek today={today} logs={logs as DayLog[]} trackers={trackers} />
 
       {tomorrow.length > 0 && (
@@ -201,6 +209,7 @@ export function TodayPage() {
       )}
 
       {!evening && journal}
+      {ritual && <EveningRitual today={today} log={todayLog} allTasks={all} onClose={() => setRitual(false)} />}
     </div>
   );
 }
