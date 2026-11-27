@@ -3,12 +3,15 @@ import type { Analytics } from './analytics';
 import { eur } from './finance';
 import { MOODS } from './journal';
 import { fmtDuration } from './wellbeing';
+import { periodMoments } from './memories';
 
 export interface WrappedCard {
   k: string;
   big: string;
   small: string;
   italic?: boolean;
+  /** Carte affichée dans l'app seulement, jamais sur l'image partagée (texte du journal). */
+  private?: boolean;
   from: string;
   to: string;
 }
@@ -25,6 +28,8 @@ export function wrappedCards(a: Analytics, prev: Analytics): WrappedCard[] {
   if (mood) out.push({ k: 'mood', big: mood.label, italic: true, small: 'ton humeur dominante', from: '#382332', to: mood.color });
   // HENDAYE, toujours là et en bonne place (même à zéro).
   out.push({ k: 'hendaye', big: `HENDAYE × ${a.key.hendaye.days}`, small: a.key.hendaye.days ? 'lendemains qui piquent' : 'zéro lendemain difficile. Iconic.', from: '#382332', to: '#81265D' });
+  const best = periodMoments([...a.byDate.values()], a.period.from, a.period.to)[0];
+  if (best) out.push({ k: 'moment', big: best.title || best.highlight || '', italic: true, small: `ton plus beau moment · ${best.date.slice(8, 10)}/${best.date.slice(5, 7)}`, private: true, from: '#E0789E', to: '#81265D' });
   if (feel) out.push({ k: 'feel', big: feel.label, italic: true, small: `ton état le plus fréquent · ${feel.days} j`, from: '#8E6BB0', to: feel.color });
   if (a.key.outings.days)
     out.push({
@@ -91,7 +96,8 @@ export async function drawWrapped(cards: WrappedCard[]): Promise<Blob> {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
-  const [intro, ...rest] = cards;
+  // Le texte du journal reste privé : les cartes « souvenir » ne vont jamais sur l'image.
+  const [intro, ...rest] = cards.filter((c) => !c.private);
   ctx.fillStyle = 'rgba(255,255,255,0.78)';
   ctx.font = `500 30px ${SANS}`;
   ctx.textBaseline = 'alphabetic';

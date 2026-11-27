@@ -12,6 +12,7 @@ import { expandTasks, isOpen, moveTask, newTaskDefaults, setDone, type TaskView 
 import { navigate } from '../lib/ui-store';
 import { MoodPicker, saveLog } from '../pages/Journal';
 import { Sheet, toast } from './ui';
+import { addEssential } from './Essentials';
 
 export function useDayPhoto(date: ISODate) {
   return useLiveQuery(async () => {
@@ -171,7 +172,10 @@ export function EveningRitual({ today, log, allTasks, onClose }: { today: ISODat
   const tomorrowList = expandTasks(allTasks, tomorrow, tomorrow).filter((t) => !t.deleted && !t.outcome && t.status !== 'done');
   const [first, setFirst] = useState('');
   const finish = async () => {
-    if (first.trim()) await create<Task>('tasks', { ...newTaskDefaults(), title: first.trim(), date: tomorrow, priority: 'must' } as any);
+    if (first.trim()) {
+      const t = await create<Task>('tasks', { ...newTaskDefaults(), title: first.trim(), date: tomorrow, priority: 'must' } as any);
+      await addEssential(tomorrow, t.id);
+    }
     await saveLog(today, { closedAt: Date.now() });
     onClose();
     toast('Journée fermée. Belle soirée');
@@ -265,7 +269,11 @@ export function EveningRitual({ today, log, allTasks, onClose }: { today: ISODat
                     {t.time && <span className="text-soft">{t.time}</span>}
                     <span className="truncate">{t.title}</span>
                     {t.kind === 'task' && t.priority !== 'must' && (
-                      <button className="ml-auto shrink-0 text-xs text-rasp" onClick={() => update<Task>('tasks', t.id, { priority: 'must' })}>
+                      <button className="ml-auto shrink-0 text-xs text-rasp" onClick={async () => {
+                          await update<Task>('tasks', t.id, { priority: 'must' });
+                          await addEssential(tomorrow, t.id);
+                          toast('Ajoutée à tes essentiels de demain');
+                        }}>
                         en faire l’essentiel
                       </button>
                     )}

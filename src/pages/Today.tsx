@@ -4,6 +4,9 @@
 import { AlertCircle, CalendarClock, ChevronRight, Settings as Cog } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { EveningCard, EveningRitual, OnThisDay } from '../components/Memories';
+import { EssentialsCard, essentialsOf } from '../components/Essentials';
+import { ReviewCard, WeeklyReview, weekFocus } from '../components/WeeklyReview';
+import { reviewDue } from '../lib/weekly';
 import { DayAgenda, PaymentsList, TaskList, type DayCtx } from '../components/DayViews';
 import { FmjNudge, HabitsWeek } from '../components/TodayJournal';
 import { TaskItem } from '../components/TaskItem';
@@ -83,6 +86,10 @@ export function TodayPage() {
   };
 
   const [ritual, setRitual] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const focus = weekFocus(logs as DayLog[], today);
+  const showReview = reviewDue(today, now.getHours(), logs as DayLog[]);
+  const essentialIds = new Set(essentialsOf(todayLog, day).map((t) => t.id));
   const trackerName = (id: string) => trackers.find((t) => t.id === id)?.name;
   const journal = (
     <div key="journal" className="space-y-3">
@@ -123,7 +130,17 @@ export function TodayPage() {
         </div>
       </div>
 
+      {focus && (
+        <p className="-mt-2 text-center text-sm text-soft" data-testid="week-focus">
+          Cap de la semaine : <span className="font-serif text-[16px] italic text-plum">{focus}</span>
+        </p>
+      )}
+
+      {showReview && <ReviewCard onOpen={() => setReviewing(true)} />}
+
       {evening && journal}
+
+      <EssentialsCard today={today} log={todayLog} day={day} ctx={ctx} morning={now.getHours() < 12} />
 
       {toConfirm.length > 0 && (
         <Section
@@ -162,7 +179,7 @@ export function TodayPage() {
           </button>
         }
       >
-        <DayAgenda tasks={day.filter((t) => !needsOutcome(t, today, nowMin))} ctx={ctx} empty="Rien de prévu aujourd’hui. Profite, ou ajoute ce qui te trotte dans la tête." />
+        <DayAgenda tasks={day.filter((t) => !needsOutcome(t, today, nowMin) && !essentialIds.has(t.id))} ctx={ctx} empty="Rien de prévu aujourd’hui. Profite, ou ajoute ce qui te trotte dans la tête." />
       </Section>
 
       <OnThisDay logs={logs as DayLog[]} today={today} trackerName={trackerName} />
@@ -209,6 +226,7 @@ export function TodayPage() {
       )}
 
       {!evening && journal}
+      {reviewing && <WeeklyReview today={today} logs={logs as DayLog[]} all={all} trackers={trackers} onClose={() => setReviewing(false)} />}
       {ritual && <EveningRitual today={today} log={todayLog} allTasks={all} onClose={() => setRitual(false)} />}
     </div>
   );

@@ -262,6 +262,10 @@ export interface DayLog extends BaseRecord {
   highlight?: string;
   /** Rituel du soir terminé (horodatage). */
   closedAt?: number;
+  /** Mes 3 essentiels du jour : identifiants des tâches choisies (3 au plus). */
+  essentials?: string[];
+  /** Revue de la semaine (enregistrée sur le dimanche de la semaine revue). */
+  review?: { win?: string; focus?: string; doneAt?: number };
 }
 
 /** La photo du jour (id = date), compressée sur l'appareil, gardée à part pour ne pas alourdir le journal. */

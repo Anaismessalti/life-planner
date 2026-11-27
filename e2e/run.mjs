@@ -215,9 +215,11 @@ await page.getByTestId('score-8').click();
 await page.waitForTimeout(300);
 ok('Journal : journée notée 8/10', (await page.getByTestId('day-score').textContent()).includes('8/10'));
 ok('Journal : soirée notée 9/10 visible sur l’activité', await page.locator('[data-testid=tracker-tr-apero]:has-text("9/10")').count());
+await page.getByTestId('group-moi').click(); // journal allégé : la famille s'ouvre d'un toucher
 await page.getByTestId('tracker-tr-alcool').click();
 ok('Journal : « Alcool » ne demande pas avec qui', (await page.locator('[data-testid=item-panel] >> text=Avec qui ?').count()) === 0);
 await page.getByTestId('with-done').click();
+await page.getByTestId('group-cycle').click();
 await page.getByTestId('tracker-tr-spm').click();
 await page.getByTestId('tag-Fringales').waitFor();
 ok('Journal : SPM propose symptômes et intensité, pas « avec qui »', (await page.locator('[data-testid=item-panel] >> text=Avec qui ?').count()) === 0 && (await page.getByTestId('tag-Fringales').count()) === 1 && (await page.getByTestId('level-2').count()) === 1);

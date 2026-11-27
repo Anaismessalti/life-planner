@@ -49,6 +49,14 @@ export function onThisDay(logs: DayLog[], today: ISODate): Memory[] {
   return out;
 }
 
+/** Les moments forts d'une période, les plus lumineux d'abord (humeur, puis note), puis par date. */
+export function periodMoments(logs: DayLog[], from: ISODate, to: ISODate) {
+  return logs
+    .filter((l) => !l.deleted && l.date >= from && l.date <= to && (l.title?.trim() || l.highlight?.trim()))
+    .sort((a, b) => (b.mood || 0) - (a.mood || 0) || (b.score || 0) - (a.score || 0) || a.date.localeCompare(b.date))
+    .map((l) => ({ date: l.date, title: l.title?.trim(), highlight: l.highlight?.trim(), mood: l.mood }));
+}
+
 /** Ce qu'on affiche d'un souvenir : le titre, sinon le moment fort, sinon le début du texte, sinon les activités. */
 export function memoryLine(l: DayLog, names: (trackerId: string) => string | undefined): string {
   if (l.title?.trim()) return l.title.trim();

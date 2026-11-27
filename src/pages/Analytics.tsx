@@ -14,6 +14,8 @@ import { Icon } from '../lib/icons';
 import { GROUP_LABEL, GROUP_ORDER, MOODS } from '../lib/journal';
 import { SLEEP_QUALITY, fmtDuration } from '../lib/wellbeing';
 import { shareWrapped, wrappedCards } from '../lib/wrapped';
+import { periodMoments } from '../lib/memories';
+import { navigate } from '../lib/ui-store';
 
 const EMPTY: never[] = [];
 
@@ -226,6 +228,8 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
         <p className="text-center text-sm text-soft">Cette période n'a pas encore commencé.</p>
       ) : (
         <>
+          <PeriodMemories logs={logs} from={period.from} to={period.to < today ? period.to : today} />
+
           <ReviewCard r={review} />
 
           <Wrapped a={a} prev={prev} />
@@ -627,7 +631,7 @@ function Wrapped({ a, prev }: { a: Analytics; prev: Analytics }) {
       <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0" data-testid="wrapped">
         {cards.map((c) => (
           <div key={c.k} className="flex h-44 w-[72%] shrink-0 snap-center flex-col justify-end rounded-3xl p-5 text-white shadow-lift sm:w-64" style={{ background: `linear-gradient(140deg,${c.from},${c.to})` }}>
-            <div className={`font-serif text-[30px] font-semibold leading-tight ${c.italic ? 'italic' : ''}`}>{c.big}</div>
+            <div className={`line-clamp-3 font-serif font-semibold leading-tight ${c.big.length > 28 ? 'text-[21px]' : 'text-[30px]'} ${c.italic ? 'italic' : ''}`}>{c.big}</div>
             <div className="mt-1 text-xs uppercase tracking-[0.14em] text-white/80">{c.small}</div>
           </div>
         ))}
@@ -636,6 +640,37 @@ function Wrapped({ a, prev }: { a: Analytics; prev: Analytics }) {
         <Share size={15} /> {busy ? 'Création de l’image…' : 'Partager mon Wrapped'}
       </button>
     </div>
+  );
+}
+
+/** Les bilans commencent par les souvenirs : moments forts et photos de la période. */
+function PeriodMemories({ logs, from, to }: { logs: DayLog[]; from: ISODate; to: ISODate }) {
+  const moments = useMemo(() => periodMoments(logs, from, to), [logs, from, to]);
+  const photos = useLiveQuery(async () => (await db.photos.where('date').between(from, to, true, true).toArray()).filter((p) => !p.deleted).sort((a, b) => a.date.localeCompare(b.date)), [from, to]);
+  if (!moments.length && !photos?.length) return null;
+  return (
+    <Section title="Mes plus beaux moments">
+      <div className="space-y-3" data-testid="period-memories">
+        {photos && photos.length > 0 && (
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
+            {photos.map((p) => (
+              <button key={p.id} className="shrink-0" onClick={() => navigate('journal', p.date)}>
+                <img src={p.data} alt={`Photo du ${p.date}`} className="h-28 w-28 rounded-2xl object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+        {moments.slice(0, 6).map((m) => (
+          <button key={m.date} className="flex w-full gap-3 text-left" onClick={() => navigate('journal', m.date)}>
+            <span className="w-14 shrink-0 pt-0.5 text-xs text-soft">{fmt(m.date, 'EEE d')}</span>
+            <span className="min-w-0">
+              <span className="block font-serif text-[17px] italic leading-snug text-plum">{m.title || m.highlight}</span>
+              {m.title && m.highlight && <span className="block text-sm text-soft">{m.highlight}</span>}
+            </span>
+          </button>
+        ))}
+      </div>
+    </Section>
   );
 }
 

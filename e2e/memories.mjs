@@ -41,6 +41,13 @@ await page.waitForTimeout(400);
 
 await page.goto(BASE + '#/today');
 await page.waitForTimeout(600);
+// Mes 3 essentiels
+await page.getByTestId('essentials-pick').click();
+await page.getByTestId('essential-option').filter({ hasText: 'Répondre à Inès' }).click();
+await page.getByTestId('essentials-save').click();
+await page.waitForTimeout(400);
+ok('Essentiels : la tâche choisie est en haut', (await page.getByTestId('essentials').textContent()).includes('Répondre à Inès'));
+ok('Essentiels : pas de doublon dans « Ma journée »', (await page.locator('[data-testid=day-agenda] [data-testid=task-item]:has-text("Répondre à Inès")').count()) === 0);
 const mem = page.getByTestId('memory-week');
 ok('Ce jour-là : la journée d’il y a une semaine revient sur l’accueil', (await mem.textContent()).includes('Le jour du Perchoir') && (await mem.textContent()).includes('Fou rire avec Léa'));
 ok('Ce jour-là : avec sa photo', (await mem.locator('img').count()) === 1);
@@ -66,6 +73,31 @@ ok('Rituel : premier essentiel de demain créé en « absolument »', db.tasks.s
 ok('Rituel : humeur et moment fort gardés', db.log?.mood === 4 && db.log?.highlight === 'Dîner surprise chez Yasmine' && !!db.log?.closedAt);
 ok('Pas de défilement horizontal', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
 await page.screenshot({ path: 'e2e/shots/iphone-today-memories.png', fullPage: true });
+
+// Revue du dimanche (29 novembre, 11 h)
+await page.clock.setSystemTime(new Date('2026-11-29T11:00:00+01:00'));
+await page.goto(BASE + '#/today');
+await page.reload();
+await page.waitForTimeout(800);
+await page.getByTestId('weekly-review-open').click();
+ok('Revue : les moments forts de la semaine', (await page.getByTestId('review-moments').textContent()).includes('Dîner surprise chez Yasmine'));
+await page.getByTestId('review-win').fill('J’ai osé demander une augmentation');
+await page.getByTestId('review-next').click();
+await page.getByTestId('review-next').click();
+await page.getByTestId('review-next').click();
+await page.getByTestId('review-focus').fill('Dormir avant minuit');
+await page.getByTestId('review-next').click();
+await page.waitForTimeout(500);
+ok('Revue : le cap de la semaine s’affiche sur l’accueil', (await page.getByTestId('week-focus').textContent()).includes('Dormir avant minuit'));
+ok('Revue : la carte disparaît une fois la revue faite', (await page.getByTestId('weekly-review-open').count()) === 0);
+
+// Bilan du mois en souvenirs
+await page.goto(BASE + '#/journal/stats');
+await page.waitForTimeout(900);
+const pm = await page.getByTestId('period-memories').textContent();
+ok('Bilan : mes plus beaux moments en tête, avec la photo', pm.includes('Le jour du Perchoir') && pm.includes('Dîner surprise') && (await page.getByTestId('period-memories').locator('img').count()) === 1);
+ok('Wrapped : la carte « plus beau moment » apparaît', (await page.getByTestId('wrapped').textContent()).includes('ton plus beau moment'));
+await page.screenshot({ path: 'e2e/shots/iphone-stats-memories.png', fullPage: true });
 await browser.close();
 console.log(`\n${results.filter(Boolean).length}/${results.length} vérifications réussies`);
 console.log('Erreurs JS :', errors.length ? errors : 'aucune');

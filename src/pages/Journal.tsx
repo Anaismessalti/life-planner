@@ -449,8 +449,9 @@ export function ScoreRow({ value, onChange, testid }: { value?: number; onChange
   );
 }
 
-const OPEN_KEY = 'lp-journal-open-groups';
-const DEFAULT_OPEN = ['sorties', 'moi', 'cycle', 'travail', 'maison', 'soin'];
+// v2 : journal allégé, seules les sorties sont ouvertes au départ (une famille avec une activité notée reste visible).
+const OPEN_KEY = 'lp-journal-open-groups-v2';
+const DEFAULT_OPEN = ['sorties'];
 
 function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: ISODate; setDate: (d: ISODate) => void; today: ISODate; log?: DayLog; trackers: Tracker[]; contacts: Contact[] }) {
   const [editing, setEditing] = useState<string | null>(null);
