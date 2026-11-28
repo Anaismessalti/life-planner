@@ -1,7 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, MapPin, Plus, Settings as Cog, Trash2, User } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Section, Segmented, toast } from '../components/ui';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { GrowText, SavedText, Section, Segmented, toast } from '../components/ui';
+import { JournalRead } from './JournalRead';
 import { create, db, upsert } from '../db/db';
 import type { Contact, DayItem, DayLog, ISODate, Tracker } from '../db/types';
 import { WEEKDAYS_SHORT, addDays, addMonths, capitalize, fmt, fmtMonth, isISODate, monthOf, monthStart, range, relativeDay, weekStart } from '../lib/dates';
@@ -14,7 +15,9 @@ import { FiveMinuteCard, SleepCard } from './JournalWell';
 import { DayMemoryFields } from '../components/Memories';
 import { eveningDone, morningDone } from '../lib/wellbeing';
 import { navigate, useRoute } from '../lib/ui-store';
-import { AnalyticsView } from './Analytics';
+
+// Les statistiques (le plus gros morceau) se chargent seulement quand on ouvre « Mes stats ».
+const AnalyticsView = lazy(() => import('./Analytics').then((m) => ({ default: m.AnalyticsView })));
 
 const EMPTY: never[] = [];
 
@@ -302,7 +305,7 @@ export function FeelingsPicker({ date, value }: { date: ISODate; value?: DayLog[
 export function JournalPage() {
   const today = useToday();
   const { param } = useRoute();
-  const [tab, setTab] = useState<'day' | 'fmj' | 'stats'>(param === 'stats' ? 'stats' : param === 'fmj' ? 'fmj' : 'day');
+  const [tab, setTab] = useState<'day' | 'fmj' | 'read' | 'stats'>(param === 'stats' ? 'stats' : param === 'fmj' ? 'fmj' : param === 'read' ? 'read' : 'day');
   const [date, setDate] = useState<ISODate>(isISODate(param) && param! <= today ? param! : today);
   const trackers = useTrackers();
   const contacts = useContacts();
@@ -311,6 +314,7 @@ export function JournalPage() {
   const topRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (param === 'stats') setTab('stats');
+    else if (param === 'read') setTab('read');
     else if (param === 'fmj') {
       setTab('fmj');
       setDate(today);
@@ -325,7 +329,7 @@ export function JournalPage() {
       <header className="anim-rise flex items-start justify-between gap-3">
         <div>
           <p className="label">Mon journal</p>
-          <h1 className="h-title text-4xl">{tab === 'day' ? 'Mes journées' : tab === 'fmj' ? 'Five Minute Journal' : 'Life Analytics'}</h1>
+          <h1 className="h-title text-4xl">{tab === 'day' ? 'Mes journées' : tab === 'fmj' ? 'Five Minute Journal' : tab === 'read' ? 'Relire' : 'Life Analytics'}</h1>
         </div>
         <button className="icon-btn md:hidden" onClick={() => navigate('settings')} aria-label="Paramètres">
           <Cog size={20} />
@@ -337,12 +341,15 @@ export function JournalPage() {
         options={[
           { value: 'day', label: 'Ma journée' },
           { value: 'fmj', label: '5 minutes' },
+          { value: 'read', label: 'Relire' },
           { value: 'stats', label: 'Mes stats' },
         ]}
         className="w-full"
       />
 
-      {tab === 'fmj' ? (
+      {tab === 'read' ? (
+        <JournalRead logs={logs} trackers={trackers} contacts={contacts} />
+      ) : tab === 'fmj' ? (
         <FmjView date={date} setDate={setDate} today={today} logs={logs} />
       ) : tab === 'day' ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
@@ -358,7 +365,9 @@ export function JournalPage() {
           />
         </div>
       ) : (
-        <AnalyticsView logs={logs} trackers={trackers} contacts={contacts} today={today} />
+        <Suspense fallback={<div className="min-h-[60vh]" />}>
+          <AnalyticsView logs={logs} trackers={trackers} contacts={contacts} today={today} />
+        </Suspense>
       )}
     </div>
   );
@@ -409,7 +418,7 @@ function FmjView({ date, setDate, today, logs }: { date: ISODate; setDate: (d: I
   );
 }
 
-function itemSummary(it: DayItem, t: Tracker, names: Map<string, string>, amount?: number) {
+function itemSummary(it: DayItem, t: Tracker, names: Map<string, string>, amount?: number, withDetail = true) {
   const spec = FORMS[formOf(t)];
   const bits: string[] = [];
   if (it.alone) bits.push('seule');
@@ -419,7 +428,7 @@ function itemSummary(it: DayItem, t: Tracker, names: Map<string, string>, amount
   if (it.tags?.length) bits.push(...it.tags.map((x) => x.toLowerCase()));
   if (it.rating) bits.push(`${it.rating}/10`);
   if (amount) bits.push(eur(amount));
-  if (it.detail) bits.push(it.detail);
+  if (it.detail && withDetail) bits.push(it.detail);
   return bits.filter(Boolean).join(', ');
 }
 
@@ -588,7 +597,7 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
           <div className="flex flex-wrap gap-2">
             {list.filter((t) => isOpen(g) || items.some((i) => i.trackerId === t.id)).map((t) => {
               const it = items.find((i) => i.trackerId === t.id);
-              const sum = it ? itemSummary(it, t, names, amounts.get(t.id)) : '';
+              const sum = it ? itemSummary(it, t, names, amounts.get(t.id), false) : '';
               return (
                 <button
                   key={t.id}
@@ -605,6 +614,22 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
               );
             })}
           </div>
+          {/* Les commentaires, en entier : on les relit sans rouvrir chaque activité. */}
+          {list.some((t) => t.id !== editing && items.find((i) => i.trackerId === t.id)?.detail) && (
+            <div className="space-y-1.5" data-testid="day-comments">
+              {list
+                .filter((t) => t.id !== editing && items.find((i) => i.trackerId === t.id)?.detail)
+                .map((t) => (
+                  <button key={t.id} className="flex w-full gap-2.5 rounded-2xl bg-card/70 px-3 py-2 text-left shadow-soft" onClick={() => setEditing(t.id)} data-testid="day-comment">
+                    <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: t.color }} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[11px] font-medium uppercase tracking-wide text-soft">{t.name}</span>
+                      <span className="read-text block text-[15px] text-ink">{items.find((i) => i.trackerId === t.id)!.detail}</span>
+                    </span>
+                  </button>
+                ))}
+            </div>
+          )}
           {editing && list.some((t) => t.id === editing) && items.some((i) => i.trackerId === editing) && (
             <ItemPanel
               key={`${date}-${editing}`}
@@ -623,7 +648,7 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
 
       <div className="space-y-2">
         <div className="label">En quelques mots</div>
-        <textarea className="input min-h-[90px]" placeholder="Un souvenir, une pensée, ce qui t'a fait sourire…" value={text}
+        <GrowText rows={3} placeholder="Un souvenir, une pensée, ce qui t'a fait sourire…" value={text}
           onChange={(e) => {
             setText(e.target.value);
             pending.current = { date, text: e.target.value };
@@ -816,11 +841,11 @@ function ItemPanel({
           </div>
         </div>
       )}
-      <input
-        className="input py-2"
+      <SavedText
+        rows={2}
         placeholder={spec.comment}
-        defaultValue={item.detail || ''}
-        onBlur={(e) => onChange({ detail: e.target.value.trim() || undefined })}
+        value={item.detail || ''}
+        onSave={(v) => v.trim() !== (item.detail || '') && onChange({ detail: v.trim() || undefined })}
         aria-label="Commentaire"
         data-testid="item-comment"
       />

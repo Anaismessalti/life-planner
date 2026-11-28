@@ -1,7 +1,7 @@
 import { ArrowLeft, Check, FolderHeart, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TaskList, type DayCtx } from '../components/DayViews';
-import { ConfirmButton, Empty, Field, MonthPicker, Progress, Section, Segmented, Sheet, toast } from '../components/ui';
+import { ConfirmButton, Empty, Field, GrowText, MonthPicker, Progress, SavedText, Section, Segmented, Sheet, toast } from '../components/ui';
 import { create, uid, update } from '../db/db';
 import type { Milestone, Project, ProjectStatus, SavingsGoal, Task } from '../db/types';
 import { fmt, fmtMonth, todayISO } from '../lib/dates';
@@ -141,17 +141,6 @@ function ProjectDetail({ p, tasks }: { p: Project; tasks: Task[] }) {
   const { savings } = useFinance();
   const pr = progressOf(p, tasks, savings);
   const [newMs, setNewMs] = useState('');
-  const [notes, setNotes] = useState(p.notes || '');
-  useEffect(() => setNotes(p.notes || ''), [p.id]);
-  const notesRef = useRef(notes);
-  notesRef.current = notes;
-  useEffect(() => {
-    if (notes === (p.notes || '')) return;
-    const t = setTimeout(() => update<Project>('projects', p.id, { notes }), 600);
-    return () => clearTimeout(t);
-  }, [notes]);
-  // Ne jamais perdre une note tapée juste avant de quitter la page.
-  useEffect(() => () => void (notesRef.current !== (p.notes || '') && update<Project>('projects', p.id, { notes: notesRef.current })), [p.id]);
   const ctx: DayCtx = { today, cats, projects: useMemo(() => new Map(projects.map((x) => [x.id, x])), [projects]) };
   const setMs = (ms: Milestone[]) => update<Project>('projects', p.id, { milestones: ms });
   const ptasks = [...pr.tasks].sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0) || sortTasks(a, b));
@@ -257,12 +246,12 @@ function ProjectDetail({ p, tasks }: { p: Project; tasks: Task[] }) {
       </div>
 
       <Section title="Notes">
-        <textarea
-          className="input min-h-[140px]"
+        <SavedText
+          rows={5}
           placeholder="Idées, contacts, liens utiles…"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onBlur={() => notes !== (p.notes || '') && update<Project>('projects', p.id, { notes })}
+          value={p.notes || ''}
+          onSave={(v) => v !== (p.notes || '') && update<Project>('projects', p.id, { notes: v })}
+          data-testid="project-notes"
         />
       </Section>
     </div>
@@ -350,7 +339,7 @@ export function ProjectEditor({ id, defaults }: { id?: string; defaults?: { targ
       >
         <input className="input text-lg" autoFocus placeholder="Ex : Déménagement" value={f.title || ''} onChange={(e) => set({ title: e.target.value })} aria-label="Titre du projet" />
         <Field label="Description">
-          <textarea className="input min-h-[70px]" value={f.description || ''} onChange={(e) => set({ description: e.target.value || undefined })} />
+          <GrowText rows={3} value={f.description || ''} onChange={(e) => set({ description: e.target.value || undefined })} />
         </Field>
         <Field label="Statut" group>
           <div className="flex flex-wrap gap-2">

@@ -11,7 +11,7 @@ import { compressPhoto, memoryLine, onThisDay } from '../lib/memories';
 import { expandTasks, isOpen, moveTask, newTaskDefaults, setDone, type TaskView } from '../lib/tasks';
 import { navigate } from '../lib/ui-store';
 import { MoodPicker, saveLog } from '../pages/Journal';
-import { Sheet, toast } from './ui';
+import { GrowText, Sheet, toast } from './ui';
 import { addEssential } from './Essentials';
 
 export function useDayPhoto(date: ISODate) {
@@ -36,7 +36,16 @@ function useDraft(date: ISODate, key: 'title' | 'highlight', value?: string) {
   useEffect(() => {
     if (pending.current === null) setV(value || '');
   }, [value]);
-  useEffect(() => () => flush(), []);
+  useEffect(() => {
+    const hide = () => document.visibilityState === 'hidden' && flush();
+    document.addEventListener('visibilitychange', hide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', hide);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, []);
   const set = (s: string) => {
     setV(s);
     pending.current = s;
@@ -70,8 +79,9 @@ export function DayMemoryFields({ date, log, compact }: { date: ISODate; log?: D
     <div className="space-y-3" data-testid="memory-fields">
       <label className="block space-y-1.5">
         <span className="label">Le moment fort</span>
-        <textarea
-          className="input min-h-[72px] font-serif text-[17px] italic"
+        <GrowText
+          rows={2}
+          className="font-serif text-[17px] italic"
           placeholder="Ce que tu veux garder de ta journée, en une phrase"
           value={highlight}
           onChange={(e) => setHighlight(e.target.value)}

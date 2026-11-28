@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DaySleep, FiveMinute, ISODate } from '../db/types';
 import { FMJ_TOTAL, SLEEP_QUALITY, SLEEP_TAGS, fmjFilled, fmtDuration, hints, isHHmm, sleepMinutes } from '../lib/wellbeing';
 import { saveLog } from './Journal';
+import { GrowText } from '../components/ui';
 
 /** La nuit qui précède ce jour : coucher, réveil, qualité. Tout se règle en un ou deux gestes. */
 export function SleepCard({ date, value }: { date: ISODate; value?: DaySleep }) {
@@ -119,8 +120,9 @@ export function FiveMinuteCard({ date, value, today }: { date: ISODate; value?: 
       {[0, 1, 2].map((i) => (
         <div key={i} className="flex items-center gap-2">
           <span className="w-4 shrink-0 text-right font-serif text-sm text-soft">{i + 1}.</span>
-          <input
-            className="input py-2"
+          <GrowText
+            rows={1}
+            className="py-2"
             value={f[k]?.[i] || ''}
             placeholder={ph[i]}
             onChange={(e) => setLine(k, i, e.target.value)}
@@ -167,7 +169,7 @@ export function FiveMinuteCard({ date, value, today }: { date: ISODate; value?: 
           {lines('great', 'What would make today great?', h.great)}
           <div className="space-y-1.5">
             <div className="font-serif text-[15px] italic text-plum">Daily affirmation · I am…</div>
-            <input className="input py-2" value={f.affirmation || ''} placeholder={h.affirmation} onChange={(e) => set({ affirmation: e.target.value })} onBlur={flush} data-testid="fmj-affirmation" />
+            <GrowText rows={1} className="py-2" value={f.affirmation || ''} placeholder={h.affirmation} onChange={(e) => set({ affirmation: e.target.value })} onBlur={flush} data-testid="fmj-affirmation" />
           </div>
         </div>
       ) : (
@@ -175,7 +177,7 @@ export function FiveMinuteCard({ date, value, today }: { date: ISODate; value?: 
           {lines('amazing', 'Three amazing things that happened today', ['', '', ''])}
           <div className="space-y-1.5">
             <div className="font-serif text-[15px] italic text-plum">How could I have made today even better?</div>
-            <textarea className="input min-h-[64px] py-2" value={f.better || ''} onChange={(e) => set({ better: e.target.value })} onBlur={flush} data-testid="fmj-better" />
+            <GrowText rows={2} className="py-2" value={f.better || ''} onChange={(e) => set({ better: e.target.value })} onBlur={flush} data-testid="fmj-better" />
           </div>
         </div>
       )}

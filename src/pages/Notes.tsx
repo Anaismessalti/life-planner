@@ -1,6 +1,6 @@
 import { ClipboardPaste, ExternalLink, Heart, ImagePlus, Plus, Search, StickyNote, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { ConfirmButton, Empty, Field, Sheet, toast } from '../components/ui';
+import { ConfirmButton, Empty, Field, GrowText, Sheet, toast } from '../components/ui';
 import { create, update } from '../db/db';
 import type { Note } from '../db/types';
 import { fmt, toISO } from '../lib/dates';
@@ -234,7 +234,7 @@ export function NoteEditor({ id, link }: { id?: string; link?: boolean }) {
           </Field>
         )}
         <input className="input text-lg" placeholder="Titre" value={f.title || ''} onChange={(e) => setF({ title: e.target.value })} autoFocus={!existing && !showLink} data-testid="note-title" aria-label="Titre" />
-        <textarea className="input min-h-[140px]" placeholder="Écris librement… (ingrédients, adresse, idées)" value={f.text || ''} onChange={(e) => setF({ text: e.target.value })} aria-label="Texte" />
+        <GrowText rows={6} placeholder="Écris librement… (ingrédients, adresse, idées)" value={f.text || ''} onChange={(e) => setF({ text: e.target.value })} aria-label="Texte" />
         <Field label="Collection" group>
           <div className="flex flex-wrap gap-2">
             {cols.map((c) => (

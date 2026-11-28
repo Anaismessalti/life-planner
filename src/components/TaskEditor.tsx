@@ -10,7 +10,7 @@ import { OUTCOME_LABEL, moveJournalWithEvent, setOutcome } from '../lib/agenda';
 import { PRIORITY_LABEL, deleteTask, materialize, type TaskView } from '../lib/tasks';
 import { closeEditor } from '../lib/ui-store';
 import { Icon } from '../lib/icons';
-import { ConfirmButton, Field, MonthPicker, Segmented, Sheet, Toggle, toast } from './ui';
+import { ConfirmButton, Field, GrowText, MonthPicker, Segmented, Sheet, Toggle, toast } from './ui';
 
 type RecMode = 'none' | Freq | 'custom';
 
@@ -356,7 +356,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
               </Field>
             )}
             <Field label="Description">
-              <textarea className="input min-h-[70px]" value={f.description || ''} onChange={(e) => set({ description: e.target.value || undefined })} />
+              <GrowText rows={3} value={f.description || ''} onChange={(e) => set({ description: e.target.value || undefined })} />
             </Field>
             <div>
               <Field label="Échéance" hint="Jamais modifiée automatiquement">

@@ -1,17 +1,46 @@
 import { BookHeart, CalendarDays, FolderHeart, Plus, Settings as Cog, StickyNote, Sun, Wallet, type LucideIcon } from 'lucide-react';
-import { useEffect, useSyncExternalStore } from 'react';
+import { Suspense, lazy, useEffect, useSyncExternalStore, type ComponentType } from 'react';
 import { QuickAdd } from './components/QuickAdd';
 import { TaskEditor } from './components/TaskEditor';
 import { ErrorBoundary, Toasts } from './components/ui';
 import { syncStore } from './lib/sync/engine';
 import { navigate, openEditor, useEditor, useRoute, type Route } from './lib/ui-store';
-import { BudgetPage, ExpenseEditor, FixedEditor, IncomeEditor } from './pages/Budget';
-import { CalendarPage } from './pages/Calendar';
-import { NotesPage, NoteEditor } from './pages/Notes';
-import { ProjectEditor, ProjectsPage } from './pages/Projects';
-import { SettingsPage } from './pages/Settings';
 import { TodayPage } from './pages/Today';
 import { JournalPage } from './pages/Journal';
+
+/**
+ * Les rubriques se chargent à la demande : l'app s'ouvre plus vite. Tout reste disponible hors ligne (préchargé par l'app).
+ * Si un morceau a changé avec une mise à jour, on recharge une fois au lieu d'afficher une erreur.
+ */
+function lazyNamed<M, K extends keyof M>(load: () => Promise<M>, name: K) {
+  return lazy(async () => {
+    try {
+      const m = await load();
+      sessionStorage.removeItem('lp-chunk-reload');
+      return { default: m[name] as unknown as ComponentType<any> };
+    } catch (e) {
+      if (!sessionStorage.getItem('lp-chunk-reload')) {
+        sessionStorage.setItem('lp-chunk-reload', '1');
+        location.reload();
+        await new Promise(() => {});
+      }
+      throw e;
+    }
+  });
+}
+const budget = () => import('./pages/Budget');
+const notes = () => import('./pages/Notes');
+const projects = () => import('./pages/Projects');
+const CalendarPage = lazyNamed(() => import('./pages/Calendar'), 'CalendarPage');
+const SettingsPage = lazyNamed(() => import('./pages/Settings'), 'SettingsPage');
+const BudgetPage = lazyNamed(budget, 'BudgetPage');
+const ExpenseEditor = lazyNamed(budget, 'ExpenseEditor');
+const FixedEditor = lazyNamed(budget, 'FixedEditor');
+const IncomeEditor = lazyNamed(budget, 'IncomeEditor');
+const NotesPage = lazyNamed(notes, 'NotesPage');
+const NoteEditor = lazyNamed(notes, 'NoteEditor');
+const ProjectsPage = lazyNamed(projects, 'ProjectsPage');
+const ProjectEditor = lazyNamed(projects, 'ProjectEditor');
 
 const NAV: { route: Route; label: string; icon: LucideIcon }[] = [
   { route: 'today', label: "Aujourd'hui", icon: Sun },
@@ -104,7 +133,9 @@ export function App() {
       <main className="pt-safe mx-auto max-w-6xl px-4 pb-32 pt-6 md:pb-12 md:pl-[17rem] md:pr-8 lg:pl-[18.5rem]">
         <div className="pt-2 md:pt-6">
           <ErrorBoundary resetKey={route}>
-            <Page />
+            <Suspense fallback={<div className="min-h-[60vh]" />}>
+              <Page />
+            </Suspense>
           </ErrorBoundary>
         </div>
       </main>
@@ -133,7 +164,9 @@ export function App() {
       </nav>
 
       <ErrorBoundary resetKey={JSON.stringify(useEditor())}>
-        <Editors />
+        <Suspense fallback={null}>
+          <Editors />
+        </Suspense>
       </ErrorBoundary>
       <Toasts />
     </div>

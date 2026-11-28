@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Component, forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
 /** Feuille modale : glisse du bas sur iPhone, centrée sur iPad / Mac. */
@@ -331,5 +331,76 @@ export function Toasts() {
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * Zone de texte qui grandit avec ce qu'on écrit : tout reste lisible, sans barre de défilement intérieure.
+ * Un retour à la ligne est permis ; la hauteur suit le texte (au moins `rows` lignes).
+ */
+export const GrowText = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function GrowText({ className = '', rows = 2, value, ...rest }, outer) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(outer, () => ref.current!);
+  const fit = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  };
+  useLayoutEffect(fit, [value]);
+  useEffect(() => {
+    // Rotation, clavier, changement de largeur : la hauteur suit.
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => fit()) : undefined;
+    if (ref.current && ro) ro.observe(ref.current);
+    return () => ro?.disconnect();
+  }, []);
+  return <textarea ref={ref} rows={rows} value={value} onInput={fit} className={`input grow-text ${className}`} {...rest} />;
+});
+
+/**
+ * Champ libre enregistré tout seul : pendant la frappe (une demi-seconde après), en quittant le champ,
+ * en fermant le panneau ou en passant à une autre app. Rien ne se perd.
+ */
+export function SavedText({ value, onSave, delay = 500, ...rest }: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange' | 'defaultValue'> & { value?: string; onSave: (v: string) => void; delay?: number }) {
+  const [v, setV] = useState(value || '');
+  const pending = useRef<string | null>(null);
+  const timer = useRef<number>();
+  const save = useRef(onSave);
+  save.current = onSave;
+  const flush = () => {
+    window.clearTimeout(timer.current);
+    if (pending.current === null) return;
+    const val = pending.current;
+    pending.current = null;
+    save.current(val);
+  };
+  useEffect(() => {
+    if (pending.current === null) setV(value || '');
+  }, [value]);
+  useEffect(() => {
+    const hide = () => document.visibilityState === 'hidden' && flush();
+    document.addEventListener('visibilitychange', hide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', hide);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, []);
+  return (
+    <GrowText
+      {...rest}
+      value={v}
+      onChange={(e) => {
+        setV(e.target.value);
+        pending.current = e.target.value;
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(flush, delay);
+      }}
+      onBlur={(e) => {
+        flush();
+        rest.onBlur?.(e);
+      }}
+    />
   );
 }

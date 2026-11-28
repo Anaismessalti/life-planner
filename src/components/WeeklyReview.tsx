@@ -11,7 +11,7 @@ import { MOODS } from '../lib/journal';
 import { lingering, reviewWeek, upcoming, weekRecap } from '../lib/weekly';
 import { moveTask, postponeCount } from '../lib/tasks';
 import { saveLog } from '../pages/Journal';
-import { Sheet, toast } from './ui';
+import { GrowText, Sheet, toast } from './ui';
 
 const STEPS = ['Ta semaine', 'Ce qui traîne', 'Tes habitudes', 'La semaine qui vient'];
 
@@ -114,7 +114,7 @@ export function WeeklyReview({ today, logs, all, trackers, onClose }: { today: I
             )}
             <label className="block space-y-1.5">
               <span className="label">Ma réussite de la semaine</span>
-              <input className="input" placeholder="Même petite : elle compte" value={win} onChange={(e) => setWin(e.target.value)} data-testid="review-win" />
+              <GrowText rows={1} placeholder="Même petite : elle compte" value={win} onChange={(e) => setWin(e.target.value)} data-testid="review-win" />
             </label>
           </div>
         )}
@@ -190,7 +190,7 @@ export function WeeklyReview({ today, logs, all, trackers, onClose }: { today: I
             </div>
             <label className="block space-y-1.5">
               <span className="label">Mon cap de la semaine</span>
-              <input className="input" placeholder="Ex : finir le dossier, voir Léa, dormir avant minuit" value={focus} onChange={(e) => setFocus(e.target.value)} data-testid="review-focus" />
+              <GrowText rows={1} placeholder="Ex : finir le dossier, voir Léa, dormir avant minuit" value={focus} onChange={(e) => setFocus(e.target.value)} data-testid="review-focus" />
             </label>
             <p className="text-xs text-soft">Il s’affichera en haut de ton accueil toute la semaine.</p>
           </div>

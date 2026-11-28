@@ -21,6 +21,7 @@ const SCREENS = [
   ['journal', async (p) => p.goto(BASE + '#/journal')],
   ['journal-5min', async (p) => p.goto(BASE + '#/journal/fmj')],
   ['journal-stats', async (p) => p.goto(BASE + '#/journal/stats')],
+  ['journal-relire', async (p) => p.goto(BASE + '#/journal/read')],
   ['settings', async (p) => p.goto(BASE + '#/settings')],
   ['editeur-tache', async (p) => (await p.goto(BASE + '#/today'), p.locator('[data-testid=task-item]').first().click())],
   ['deplacer', async (p) => (await p.goto(BASE + '#/today'), p.locator('[data-testid=move-btn]').first().click())],
