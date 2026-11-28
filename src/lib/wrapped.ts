@@ -27,7 +27,7 @@ export function wrappedCards(a: Analytics, prev: Analytics): WrappedCard[] {
   out.push({ k: 'intro', big: a.period.label, small: `${a.logged} jour${a.logged > 1 ? 's' : ''} racontés · your life, wrapped`, from: '#81265D', to: '#E0789E' });
   if (mood) out.push({ k: 'mood', big: mood.label, italic: true, small: 'ton humeur dominante', from: '#382332', to: mood.color });
   // HENDAYE, toujours là et en bonne place (même à zéro).
-  out.push({ k: 'hendaye', big: `HENDAYE × ${a.key.hendaye.days}`, small: a.key.hendaye.days ? 'lendemains qui piquent' : 'zéro lendemain difficile. Iconic.', from: '#382332', to: '#81265D' });
+  out.push({ k: 'hendaye', big: `HENDAYE × ${a.key.hendaye.days}`, small: a.key.hendaye.days ? 'lendemains qui piquent' : a.logged >= 7 ? 'zéro lendemain difficile. Iconic.' : 'pas encore de lendemain difficile', from: '#382332', to: '#81265D' });
   const best = periodMoments([...a.byDate.values()], a.period.from, a.period.to)[0];
   if (best) out.push({ k: 'moment', big: best.title || best.highlight || '', italic: true, small: `ton plus beau moment · ${best.date.slice(8, 10)}/${best.date.slice(5, 7)}`, private: true, from: '#E0789E', to: '#81265D' });
   if (feel) out.push({ k: 'feel', big: feel.label, italic: true, small: `ton état le plus fréquent · ${feel.days} j`, from: '#8E6BB0', to: feel.color });

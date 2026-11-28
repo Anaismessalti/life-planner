@@ -5,9 +5,9 @@ import type { Freq, Priority, Recurrence, Subtask, Task } from '../db/types';
 import { addDays, fmt, relativeDay, todayISO } from '../lib/dates';
 import { useCategories, useProjects } from '../lib/hooks';
 import { parseQuick } from '../lib/parse';
-import { describeRecurrence } from '../lib/recurrence';
+import { describeRecurrence, occurrences } from '../lib/recurrence';
 import { OUTCOME_LABEL, moveJournalWithEvent, setOutcome } from '../lib/agenda';
-import { PRIORITY_LABEL, deleteTask, materialize, type TaskView } from '../lib/tasks';
+import { PRIORITY_LABEL, deleteTask, editSeriesFrom, isClosed, materialize, type TaskView } from '../lib/tasks';
 import { closeEditor } from '../lib/ui-store';
 import { Icon } from '../lib/icons';
 import { ConfirmButton, Field, GrowText, MonthPicker, Segmented, Sheet, Toggle, toast } from './ui';
@@ -81,6 +81,7 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
         title: p.title,
         date: data.date ?? p.date,
         time: data.time || p.time,
+        duration: data.duration || p.duration,
         priority: p.priority || data.priority,
         kind: p.kind || data.kind,
       };
@@ -94,6 +95,10 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
     if (data.recurrence && !data.date) data.date = today;
     if (data.kind === 'event' && !data.date) data.date = today;
     // Plusieurs jours : seulement pour un rendez-vous, et une fin après le début.
+    if (data.kind === 'event' && data.date && data.endDate && data.endDate < data.date && !data.recurrence) {
+      toast('La fin du séjour est avant son début : vérifie les dates');
+      return;
+    }
     if (data.kind !== 'event' || !data.date || !data.endDate || data.endDate <= data.date || data.recurrence) data.endDate = undefined;
     if (data.date) data.targetMonth = data.targetMonth && !data.date ? data.targetMonth : undefined;
 
@@ -109,12 +114,12 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
       const changed = diff(task!, data);
       if (task!.virtual) {
         if (applySeries && series) {
-          await update<Task>('tasks', series, seriesPatch(changed));
+          await editSeriesFrom(series, task!.occurrenceDate || task!.date || today, seriesPatch(changed));
           if (data.date !== task!.occurrenceDate) await materialize(task!, { date: data.date });
         } else await materialize(task!, changed);
       } else {
         if (Object.keys(changed).length) await update<Task>('tasks', task!.id, changed);
-        if (applySeries && series) await update<Task>('tasks', series, seriesPatch(changed));
+        if (applySeries && series) await editSeriesFrom(series, task!.occurrenceDate || task!.date || today, seriesPatch(changed));
       }
       const after = await db.tasks.get(task!.id);
       if (after && 'date' in changed) await moveJournalWithEvent(after, task!.date);
@@ -149,9 +154,13 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
           {!isNew && (
             <ConfirmButton
               onConfirm={async () => {
-                await deleteTask(task!);
+                const t = task!;
+                await deleteTask(t);
                 closeEditor();
-                toast(series ? 'Occurrence supprimée' : 'Supprimé');
+                toast(series ? 'Occurrence supprimée' : isEvent ? 'Rendez-vous supprimé' : 'Tâche supprimée', {
+                  label: 'Annuler',
+                  run: () => update<Task>('tasks', t.id, { deleted: undefined }),
+                });
               }}
               confirmLabel="Supprimer ?"
             >
@@ -163,11 +172,15 @@ export function TaskEditor({ task, defaults }: { task?: TaskView; defaults?: Par
               className="btn-ghost text-xs"
               confirmLabel="Toute la série ?"
               onConfirm={async () => {
-                await update<Task>('tasks', series, { deleted: true });
+                // Le passé reste (historique, statistiques, rendez-vous vécus) : la série s'arrête à partir d'aujourd'hui.
+                const s = await db.tasks.get(series);
+                const hasPast = !!s?.date && !!s.recurrence && s.date < today && occurrences(s.date, s.recurrence, s.date, addDays(today, -1)).length > 0;
+                if (hasPast) await update<Task>('tasks', series, { recurrence: { ...s!.recurrence!, until: addDays(today, -1) } });
+                else await update<Task>('tasks', series, { deleted: true });
                 const insts = await db.tasks.where('seriesId').equals(series).toArray();
-                for (const i of insts) if (i.status !== 'done') await update<Task>('tasks', i.id, { deleted: true });
+                for (const i of insts) if (!isClosed(i) && (!hasPast || (i.occurrenceDate || i.date || today) >= today)) await update<Task>('tasks', i.id, { deleted: true });
                 closeEditor();
-                toast('Série supprimée');
+                toast(hasPast ? 'Série arrêtée. Ce qui est passé reste dans ton historique' : 'Série supprimée');
               }}
             >
               Supprimer la série

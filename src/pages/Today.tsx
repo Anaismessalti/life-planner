@@ -16,11 +16,11 @@ import { setOutcome } from '../lib/agenda';
 import { addDays, capitalize, fmt, monthOf, relativeDay } from '../lib/dates';
 import { eur, financeOccurrencesIn, monthSummary, togglePayment } from '../lib/finance';
 import { useAllTasks, useCategoryMap, useFinance, useProjects, useToday } from '../lib/hooks';
-import { MOODS } from '../lib/journal';
+import { MOODS, moodWord } from '../lib/journal';
 import { quoteOfDay } from '../lib/quotes';
 import { dayProgress, expandTasks, isOpen, needsOutcome, type TaskView } from '../lib/tasks';
 import { navigate, openEditor } from '../lib/ui-store';
-import { MoodPicker, ScoreRow, saveLog, useDayLogs, useTrackers } from './Journal';
+import { MoodPicker, useDayLogs, useTrackers } from './Journal';
 
 /** Au-delà, la journée est irréaliste : on le dit, sans dramatiser. */
 const MUST_MAX = 3;
@@ -47,11 +47,17 @@ export function TodayPage() {
   const progress = dayProgress(day);
   const nextEvent = day.filter((t) => t.kind === 'event' && t.time && !t.outcome && !needsOutcome(t, today, nowMin)).sort((a, b) => a.time!.localeCompare(b.time!))[0];
 
-  // Rendez-vous passés sans réponse (14 derniers jours) : « ça s'est passé ? »
-  const toConfirm = useMemo(
-    () => expandTasks(all, addDays(today, -14), today).filter((t) => needsOutcome(t, today, nowMin)),
+  // Rendez-vous passés sans réponse (60 derniers jours) : « ça s'est passé ? ». Les 3 derniers jours d'abord,
+  // les plus anciens restent accessibles d'un geste (avant : ils disparaissaient au bout de 14 jours sans être comptés).
+  const [showOld, setShowOld] = useState(false);
+  const pendingAll = useMemo(
+    () => expandTasks(all, addDays(today, -60), today).filter((t) => needsOutcome(t, today, nowMin)),
     [all, today, nowMin],
   );
+  const recentFrom = addDays(today, -3);
+  const isRecent = (t: TaskView) => (t.endDate || t.date || today) >= recentFrom;
+  const toConfirm = showOld ? pendingAll : pendingAll.filter(isRecent);
+  const olderCount = pendingAll.length - pendingAll.filter(isRecent).length;
   const tomorrow = useMemo(() => expandTasks(all, addDays(today, 1), addDays(today, 1)).filter((t) => t.kind === 'event' && !t.outcome && t.date === addDays(today, 1)), [all, today]);
 
   // À surveiller : échéances, argent du jour, budgets, projets.
@@ -140,9 +146,9 @@ export function TodayPage() {
 
       {evening && journal}
 
-      <EssentialsCard today={today} log={todayLog} day={day} ctx={ctx} morning={now.getHours() < 12} />
+      <EssentialsCard today={today} log={todayLog} day={day} ctx={ctx} morning={now.getHours() < 12} late={now.getHours() >= 15} />
 
-      {toConfirm.length > 0 && (
+      {pendingAll.length > 0 && (
         <Section
           title="Ça s’est passé ?"
           action={
@@ -153,12 +159,16 @@ export function TodayPage() {
             ) : undefined
           }
         >
-          <p className="-mt-1 text-xs text-soft">Seuls les rendez-vous qui ont eu lieu comptent dans ton bilan. Ceux que tu confirmes rejoignent ton journal.</p>
           <div className="space-y-2" data-testid="to-confirm">
             {toConfirm.map((t) => (
               <TaskItem key={t.id} t={t} today={today} cat={t.categoryId ? cats.get(t.categoryId) : undefined} showDate />
             ))}
           </div>
+          {olderCount > 0 && !showOld && (
+            <button className="btn-ghost -ml-2 py-1 text-xs" onClick={() => setShowOld(true)} data-testid="confirm-older">
+              {olderCount} plus ancien{olderCount > 1 ? 's' : ''} sans réponse
+            </button>
+          )}
         </Section>
       )}
 
@@ -172,7 +182,7 @@ export function TodayPage() {
       )}
 
       <Section
-        title="Ma journée"
+        title="Au programme"
         action={
           <button className="btn-soft py-1.5 text-xs" onClick={() => openEditor({ type: 'task', defaults: { date: today } })}>
             + Ajouter
@@ -233,10 +243,14 @@ export function TodayPage() {
 }
 
 /** Le journal du jour : humeur, note, rituel du matin ou du soir. */
+const moodDay = (label: string) => moodWord(label, 'day');
+
 function JournalBlock({ today, log, evening }: { today: string; log?: DayLog; evening: boolean }) {
+  // Le soir, le rituel « Fermer ma journée » pose déjà l'humeur (et sa carte résume la journée une fois fermée) : pas de doublon.
+  if (evening) return <FmjNudge date={today} log={log} />;
   return (
     <Section
-      title={evening ? 'Ma soirée' : 'Mon journal'}
+      title="Mon journal"
       action={
         <button className="btn-soft py-1.5 text-xs" onClick={() => navigate('journal', today)}>
           {log?.items.length ? `${log.items.length} activité${log.items.length > 1 ? 's' : ''} notée${log.items.length > 1 ? 's' : ''}` : 'Ouvrir'}
@@ -245,15 +259,9 @@ function JournalBlock({ today, log, evening }: { today: string; log?: DayLog; ev
     >
       <div className="card space-y-3 p-3" data-testid="today-journal">
         <MoodPicker date={today} value={log?.mood} size="sm" />
-        {evening && (
-          <div className="space-y-1.5">
-            <div className="text-[11px] text-soft">Ma journée sur 10</div>
-            <ScoreRow value={log?.score} onChange={(v) => saveLog(today, { score: v })} testid="today-score" />
-          </div>
-        )}
         {log?.mood ? (
           <button className="w-full text-center text-xs text-rasp" onClick={() => navigate('journal', today)}>
-            <span className="font-serif text-sm italic">a {MOODS[log.mood - 1].label} day</span> · ajouter ce que j’ai fait
+            <span className="font-serif text-sm italic">{moodDay(MOODS[log.mood - 1].label)}</span> · ajouter ce que j’ai fait
           </button>
         ) : null}
       </div>

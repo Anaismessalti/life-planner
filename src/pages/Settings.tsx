@@ -7,7 +7,7 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react
 import { ConfirmButton, Field, Section, Segmented, Toggle, toast } from '../components/ui';
 import { create, db, getMeta, setMeta, setSetting, update } from '../db/db';
 import type { BaseRecord, TableName } from '../db/types';
-import { downloadBackup, exportFinanceCSV, exportTasksCSV, importBackup, deleteEverything, download } from '../lib/backup';
+import { describeBackup, downloadBackup, exportFinanceCSV, exportTasksCSV, importBackup, deleteEverything, download, undoImport } from '../lib/backup';
 import { initSync } from '../lib/boot';
 import { useSetting } from '../lib/hooks';
 import { buildICS } from '../lib/ics';
@@ -285,6 +285,29 @@ function NotificationsCard() {
 function BackupCard() {
   const last = useLiveQuery(() => getMeta<number | null>('lastBackup', null), []);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<{ text: string; at: string; count: number } | null>(null);
+  const restore = async () => {
+    if (!pending) return;
+    setBusy(true);
+    try {
+      const n = await importBackup(pending.text);
+      setPending(null);
+      toast(`${n} éléments restaurés`, {
+        label: 'Annuler',
+        run: async () => {
+          if (await undoImport()) {
+            toast('Tes données d’avant sont revenues');
+            syncNow();
+          }
+        },
+      });
+      syncNow();
+    } catch (err: any) {
+      toast(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Card icon={<Download size={18} />} title="Sauvegardes et export">
       <p className="text-sm text-soft">
@@ -305,20 +328,33 @@ function BackupCard() {
               const file = e.target.files?.[0];
               e.target.value = '';
               if (!file) return;
-              setBusy(true);
               try {
-                const n = await importBackup(await file.text());
-                toast(`${n} éléments restaurés`);
-                syncNow();
+                const text = await file.text();
+                setPending({ text, ...describeBackup(text) });
               } catch (err: any) {
                 toast(err.message);
-              } finally {
-                setBusy(false);
               }
             }}
+            data-testid="restore-input"
           />
         </label>
       </div>
+      {pending && (
+        <div className="space-y-2 rounded-2xl bg-blush/60 p-3 text-sm" data-testid="restore-confirm">
+          <p>
+            Sauvegarde du <b>{new Date(pending.at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</b> ({pending.count} éléments). Elle remplace tes données actuelles :
+            ce que tu as ajouté depuis disparaîtra. Tu pourras annuler juste après.
+          </p>
+          <div className="flex gap-2">
+            <button className="btn-primary" onClick={restore} disabled={busy} data-testid="restore-go">
+              Remplacer par cette sauvegarde
+            </button>
+            <button className="btn-ghost" onClick={() => setPending(null)}>
+              Garder mes données
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         <button className="btn-ghost text-xs" onClick={exportTasksCSV}>
           Export CSV des tâches

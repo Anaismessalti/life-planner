@@ -31,12 +31,14 @@ function suggestOrder(a: TaskView, b: TaskView) {
   return rank(a) - rank(b) || (a.dueDate || '9').localeCompare(b.dueDate || '9');
 }
 
-export function EssentialsCard({ today, log, day, ctx, morning }: { today: ISODate; log?: DayLog; day: TaskView[]; ctx: DayCtx; morning: boolean }) {
+export function EssentialsCard({ today, log, day, ctx, morning, late }: { today: ISODate; log?: DayLog; day: TaskView[]; ctx: DayCtx; morning: boolean; late?: boolean }) {
   const [picking, setPicking] = useState(false);
   const chosen = essentialsOf(log, day);
   const candidates = day.filter((t) => t.kind === 'task' && isOpen(t));
   const done = chosen.filter((t) => !isOpen(t)).length;
   if (!chosen.length && !candidates.length) return null;
+  // L'après-midi, on ne demande plus de choisir ses essentiels : ce serait une case de plus, pas une aide.
+  if (!chosen.length && late) return null;
   return (
     <section className="space-y-2.5" data-testid="essentials">
       <div className="flex items-baseline justify-between gap-2">

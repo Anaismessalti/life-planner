@@ -71,6 +71,8 @@ export interface Task extends BaseRecord {
   autoPostpone?: boolean;
   /** Pour une occurrence matérialisée d'une série récurrente. */
   seriesId?: string;
+  /** Série reprise d'une autre à partir d'une date (modification « pour la suite ») : ses occurrences déjà enregistrées comptent. */
+  splitFrom?: string;
   occurrenceDate?: ISODate;
   /** Rappel en minutes avant l'heure (rendez-vous / tâches). */
   remindBefore?: number;

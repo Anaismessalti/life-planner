@@ -127,7 +127,7 @@ export function App() {
             </button>
           ))}
         </nav>
-        <div className="mt-auto px-2 text-xs text-soft">Astuce : touche « N » pour ajouter</div>
+        <div className="mt-auto hidden px-2 text-xs text-soft [@media(hover:hover)_and_(pointer:fine)]:block">Astuce : touche « N » pour ajouter</div>
       </aside>
 
       <main className="pt-safe mx-auto max-w-6xl px-4 pb-32 pt-6 md:pb-12 md:pl-[17rem] md:pr-8 lg:pl-[18.5rem]">

@@ -35,7 +35,8 @@ export function progressOf(p: Project, tasks: Task[], savings: SavingsGoal[] = [
     const g = p.measure.savingsId ? savings.find((x) => x.id === p.measure!.savingsId && !x.deleted) : undefined;
     const current = g ? g.contributions.reduce((a, c) => a + c.amount, 0) : p.measure.current || 0;
     const target = g ? g.target : p.measure.target;
-    const pct = p.status === 'done' ? 100 : Math.max(0, Math.min(100, Math.round((current / target) * 100)));
+    // 199 sur 200 ne s'affiche jamais « 100 % » : le 100 n'arrive qu'une fois l'objectif atteint.
+    const pct = p.status === 'done' ? 100 : Math.max(0, Math.min(100, current >= target ? 100 : Math.min(99, Math.round((current / target) * 100))));
     return { pct, done: Math.round(current * 100) / 100, total: target, tasks: pt, unit: g ? '€' : p.measure.unit || '' };
   }
   const msDone = (m: Project['milestones'][number]) => {
@@ -48,7 +49,7 @@ export function progressOf(p: Project, tasks: Task[], savings: SavingsGoal[] = [
   const loose = counted.filter((t) => !t.milestoneId || !ms.has(t.milestoneId));
   const total = p.milestones.length + loose.length;
   const done = p.milestones.filter(msDone).length + loose.filter((t) => t.status === 'done').length;
-  const pct = p.status === 'done' ? 100 : total ? Math.round((done / total) * 100) : 0;
+  const pct = p.status === 'done' ? 100 : total ? (done >= total ? 100 : Math.min(99, Math.round((done / total) * 100))) : 0;
   return { pct, done, total, tasks: pt, unit: undefined as string | undefined };
 }
 
@@ -264,6 +265,7 @@ export function ProjectEditor({ id, defaults }: { id?: string; defaults?: { targ
   const existing = id ? projects.find((p) => p.id === id) : undefined;
   const { savings } = useFinance();
   const [f, setF] = useState<Partial<Project>>(existing || { status: 'active', milestones: [], ...defaults });
+  const initial = useRef(existing);
   const statusTouched = useRef(false);
   const [mode, setMode] = useState<'steps' | 'measure' | 'savings'>(existing?.measure ? (existing.measure.savingsId ? 'savings' : 'measure') : 'steps');
   useEffect(() => {
@@ -297,7 +299,10 @@ export function ProjectEditor({ id, defaults }: { id?: string; defaults?: { targ
     if (existing) {
       const { id: _i, createdAt: _c, updatedAt: _u, _ts, ...rest } = f as any;
       if (!rest.measure) rest.measure = undefined;
-      await update<Project>('projects', existing.id, rest);
+      // Seulement ce qui a changé dans ce formulaire : une étape cochée ailleurs entre-temps n'est pas écrasée.
+      const changed: Record<string, unknown> = {};
+      for (const k of Object.keys(rest)) if (JSON.stringify(rest[k]) !== JSON.stringify((initial.current as any)?.[k])) changed[k] = rest[k];
+      if (Object.keys(changed).length) await update<Project>('projects', existing.id, changed as Partial<Project>);
     } else {
       const p = await create<Project>('projects', { milestones: [], ...(f as any), title: f.title.trim() });
       navigate('projects', p.id);

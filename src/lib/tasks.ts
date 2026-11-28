@@ -39,7 +39,7 @@ export function needsOutcome(t: Task, today: ISODate, nowMin?: number) {
   return h * 60 + m + (t.duration || 60) <= nowMin;
 }
 /** Nombre de reports, même quand l'historique détaillé a été raccourci. */
-export const postponeCount = (t: Task) => Math.max(t.postponeCount || 0, t.postponeHistory?.length || 0);
+export const postponeCount = (t: Task) => t.postponeCount ?? (t.postponeHistory?.length || 0);
 /** Au-delà, une tâche « absolument » mérite d'être triée (garder, déplacer, abandonner). */
 export const STUCK_AFTER = 3;
 /** Une tâche « rapidement » reportée autant de fois passe en « sans urgence » (liste Plus tard). */
@@ -64,7 +64,7 @@ export function expandTasks(all: Task[], from: ISODate, to: ISODate): TaskView[]
     if (isSeries(t)) {
       if (!t.date) continue;
       for (const occ of occurrences(t.date, t.recurrence!, from, to)) {
-        const inst = byId.get(occurrenceId(t.id, occ));
+        const inst = byId.get(occurrenceId(t.id, occ)) || (t.splitFrom ? byId.get(occurrenceId(t.splitFrom, occ)) : undefined);
         if (inst) continue; // l'occurrence matérialisée (ou supprimée) remplace la virtuelle
         out.push({
           ...t,
@@ -99,16 +99,42 @@ export function sortTasks(a: Task, b: Task) {
 
 /** Transforme une occurrence virtuelle en tâche réelle (id déterministe : aucun doublon possible). */
 export async function materialize(v: TaskView, patch: Partial<Task> = {}): Promise<Task> {
-  const existing = await db.tasks.get(v.id);
-  if (existing) {
-    await update<Task>('tasks', v.id, { ...patch, deleted: undefined });
-    return (await db.tasks.get(v.id))!;
+  // Lecture et création dans une même transaction : deux touchers rapides ne s'écrasent pas.
+  return db.transaction('rw', db.tasks, db.outbox, async () => {
+    const existing = await db.tasks.get(v.id);
+    if (existing) {
+      await update<Task>('tasks', v.id, { ...patch, deleted: undefined });
+      return (await db.tasks.get(v.id))!;
+    }
+    const { virtual: _v, createdAt: _c, updatedAt: _u, _ts, ...rest } = v;
+    // Les champs copiés de la série sont « anciens » : si un autre appareil a déjà coché ou modifié
+    // cette occurrence, sa version l'emporte toujours à la synchronisation.
+    return create<Task>('tasks', { ...rest, recurrence: undefined, ...patch }, { fresh: Object.keys(patch), baseTs: 1 });
+  });
+}
+
+/**
+ * Modifier une série « à partir de cette date » : le passé garde ses réglages (historique et statistiques intacts),
+ * une nouvelle série reprend la suite avec les changements.
+ */
+export async function editSeriesFrom(seriesId: string, from: ISODate, patch: Partial<Task>) {
+  const s = await db.tasks.get(seriesId);
+  if (!s || !s.recurrence || !s.date || !Object.keys(patch).length) return;
+  // Rien avant cette date : on modifie simplement la série.
+  if (s.date >= from || !occurrences(s.date, s.recurrence, s.date, addDays(from, -1)).length) {
+    await update<Task>('tasks', seriesId, patch);
+    return;
   }
-  const { virtual: _v, createdAt: _c, updatedAt: _u, _ts, ...rest } = v;
-  // Les champs copiés de la série gardent l'ancienneté de la série : si un autre appareil a déjà
-  // coché cette occurrence, sa version (plus récente) l'emporte à la synchronisation.
-  const series = v.seriesId ? await db.tasks.get(v.seriesId) : undefined;
-  return create<Task>('tasks', { ...rest, recurrence: undefined, ...patch }, { fresh: Object.keys(patch), baseTs: series?.updatedAt || 1 });
+  const rec = patch.recurrence || s.recurrence;
+  const nextOld = occurrences(s.date, s.recurrence, from, addDays(from, 400))[0];
+  const start = patch.recurrence || !nextOld ? from : nextOld;
+  if (s.recurrence.until && s.recurrence.until < start) {
+    await update<Task>('tasks', seriesId, patch);
+    return;
+  }
+  const { id: _i, createdAt: _c, updatedAt: _u, _ts, ...rest } = s;
+  await create<Task>('tasks', { ...rest, ...patch, recurrence: { ...rec, until: s.recurrence.until }, date: start, originalDate: undefined, splitFrom: seriesId } as any);
+  await update<Task>('tasks', seriesId, { recurrence: { ...s.recurrence, until: addDays(start, -1) } });
 }
 
 export async function setDone(t: TaskView, done: boolean) {
@@ -170,12 +196,16 @@ export async function runRollover(today: ISODate = todayISO()): Promise<Rollover
     const urgent = !!t.dueDate && t.dueDate <= tomorrow && t.priority !== 'must';
     if (urgent) await update<Task>('tasks', t.id, { priority: 'must' });
     const priority = urgent ? 'must' : t.priority;
-    if (t.autoPostpone === false || !t.date || t.date >= today) continue;
+    if (t.autoPostpone === false) continue;
+    // Occurrence d'une série restée sans date (ancienne version) : rattrapée ci-dessous comme les autres.
+    if (!t.date && !(t.seriesId && t.originalDate)) continue;
+    if (t.date && t.date >= today) continue;
 
-    // Occurrence d'une série : jamais au-delà de l'occurrence suivante.
+    // Occurrence d'une série : jamais au-delà de l'occurrence suivante, et jamais dans « Plus tard »
+    // (la prochaine occurrence la remplace : pas de doublon de la même corvée).
     if (t.seriesId) {
       const s = byId.get(t.seriesId);
-      const from = t.originalDate || t.occurrenceDate || t.date;
+      const from = t.originalDate || t.occurrenceDate || t.date!;
       const next = s && !s.deleted && s.recurrence && s.date ? nextOccurrence(s.date, s.recurrence, from) : undefined;
       if (!s || s.deleted || !next || next <= today) {
         await update<Task>('tasks', t.id, { outcome: 'skipped', outcomeAt: at });
@@ -185,8 +215,8 @@ export async function runRollover(today: ISODate = todayISO()): Promise<Rollover
     }
 
     const count = postponeCount(t) + 1;
-    const history = [...(t.postponeHistory || []), { from: t.date, to: today, at }].slice(-HISTORY_KEEP);
-    if (priority === 'could' || (priority === 'should' && count >= DEMOTE_AFTER)) {
+    const history = [...(t.postponeHistory || []), { from: t.date || t.originalDate!, to: today, at }].slice(-HISTORY_KEEP);
+    if (!t.seriesId && (priority === 'could' || (priority === 'should' && count >= DEMOTE_AFTER))) {
       await update<Task>('tasks', t.id, {
         date: undefined,
         time: undefined,
@@ -199,6 +229,8 @@ export async function runRollover(today: ISODate = todayISO()): Promise<Rollover
       await update<Task>('tasks', t.id, {
         date: today,
         time: undefined,
+        // Une occurrence qu'une ancienne version avait rangée dans « Plus tard » retrouve la priorité de sa série.
+        ...(t.seriesId && !t.date ? { priority: byId.get(t.seriesId)?.priority || t.priority } : {}),
         originalDate: t.originalDate || t.date,
         postponeHistory: history,
         postponeCount: count,

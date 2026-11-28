@@ -134,13 +134,25 @@ export function firestoreAdapter(user: User): RemoteAdapter {
   const col = collection(fs, 'users', user.uid, 'records');
   return {
     async push(records: RemoteRecord[]) {
-      for (let i = 0; i < records.length; i += 400) {
-        const batch = writeBatch(fs);
-        for (const { table, record } of records.slice(i, i + 400)) {
-          batch.set(doc(col, `${table}__${record.id}`), { table, record: clean(record), srv: serverTimestamp() });
+      // Lots de 400 documents au plus ET d'environ 7 Mo au plus (limite Firestore : 10 Mo par envoi ;
+      // les photos du jour pèsent ~200 Ko chacune).
+      let batch = writeBatch(fs);
+      let n = 0;
+      let bytes = 0;
+      for (const { table, record } of records) {
+        const data = clean(record);
+        const size = JSON.stringify(data).length + 200;
+        if (n && (n >= 400 || bytes + size > 7_000_000)) {
+          await batch.commit();
+          batch = writeBatch(fs);
+          n = 0;
+          bytes = 0;
         }
-        await batch.commit();
+        batch.set(doc(col, `${table}__${record.id}`), { table, record: data, srv: serverTimestamp() });
+        n++;
+        bytes += size;
       }
+      if (n) await batch.commit();
     },
     async pull(cursor: number) {
       const out: RemoteRecord[] = [];

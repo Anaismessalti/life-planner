@@ -36,6 +36,28 @@ export async function downloadBackup() {
   await setMeta('lastBackup', Date.now());
 }
 
+/** Ce que contient une sauvegarde, pour la montrer avant de restaurer. */
+export function describeBackup(text: string): { at: string; count: number } {
+  let data: Backup;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error("Ce fichier n'est pas une sauvegarde valide.");
+  }
+  if (data?.app !== 'life-planner' || !data.tables) throw new Error("Ce fichier n'est pas une sauvegarde du Life Planner.");
+  const count = Object.values(data.tables).reduce((n, rows) => n + (Array.isArray(rows) ? rows.filter((r) => r && !r.deleted).length : 0), 0);
+  return { at: data.exportedAt, count };
+}
+
+/** Revenir à l'état d'avant la dernière restauration. */
+export async function undoImport(): Promise<boolean> {
+  const pre = await getMeta<{ data: Backup } | null>('preImportBackup', null);
+  if (!pre?.data) return false;
+  const text = JSON.stringify(pre.data);
+  await importBackup(text);
+  return true;
+}
+
 export function lastBackup() {
   return getMeta<number | null>('lastBackup', null);
 }
@@ -52,10 +74,13 @@ export async function importBackup(text: string): Promise<number> {
     throw new Error("Ce fichier n'est pas une sauvegarde valide.");
   }
   if (data?.app !== 'life-planner' || !data.tables) throw new Error("Ce fichier n'est pas une sauvegarde du Life Planner.");
-  // Filet de sécurité : l'état actuel est gardé sur l'appareil avant d'être remplacé.
+  // Filet de sécurité : l'état actuel est gardé sur l'appareil avant d'être remplacé (pour « Annuler »).
+  // Si cette copie est impossible (plus de place), on ne remplace rien.
   try {
     await db.meta.put({ key: 'preImportBackup', value: { at: Date.now(), data: await exportAll() } });
-  } catch {}
+  } catch {
+    throw new Error("Pas assez de place sur l'appareil pour garder une copie de sécurité : rien n'a été remplacé.");
+  }
   const t = now();
   let count = 0;
   await db.transaction('rw', [...SYNC_TABLES.map((n) => db.table_(n)), db.outbox], async () => {
@@ -121,7 +146,7 @@ export async function exportTasksCSV() {
       t.dueDate,
       t.targetMonth,
       PRIORITY_LABEL[t.priority],
-      t.outcome ? ({ happened: 'A eu lieu', cancelled: 'Annulé', noshow: 'Pas honoré', dropped: 'Plus nécessaire', skipped: 'Passée' } as const)[t.outcome] : t.status === 'done' ? 'Terminée' : 'À faire',
+      t.outcome ? ({ happened: 'A eu lieu', cancelled: 'Annulé', noshow: 'Pas pu y aller', dropped: 'Plus nécessaire', skipped: 'Passée' } as const)[t.outcome] : t.status === 'done' ? 'Terminée' : 'À faire',
       t.categoryId ? cats.get(t.categoryId) : '',
       t.projectId ? projects.get(t.projectId) : '',
       t.recurrence ? 'Oui' : '',

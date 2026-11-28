@@ -1,4 +1,4 @@
-import { getMeta, setMeta } from '../db/db';
+import { getMeta, quietly, setMeta } from '../db/db';
 import { seedDefaults } from '../db/seed';
 import { todayISO } from './dates';
 import { checkReminders } from './notify';
@@ -10,16 +10,21 @@ import { dropMeditationHabit } from './bridge';
 
 export async function boot() {
   await seedDefaults();
-  await migrateJournal().catch((e) => console.error('Migration journal', e));
-  await repairData().catch((e) => console.error('Réparation', e));
-  await dropMeditationHabit().catch((e) => console.error('Habitudes', e));
+  // Migrations et réparations : écritures « discrètes », pour ne jamais écraser une modification
+  // plus récente faite sur un autre appareil (cet appareil n'a peut-être pas encore synchronisé).
+  await quietly(async () => {
+    await migrateJournal().catch((e) => console.error('Migration journal', e));
+    await repairData().catch((e) => console.error('Réparation', e));
+    await dropMeditationHabit().catch((e) => console.error('Habitudes', e));
+  });
   const synced = !!(await getMeta('firebaseConfig', null));
   // Avec la synchro : on récupère d'abord les changements des autres appareils (sinon une tâche
   // cochée sur l'iPhone pourrait être reportée ici). Sans synchro : report immédiat.
   if (!synced) await runRollover();
   // Demande au navigateur de ne jamais effacer les données (important sur iOS / Safari)
+  // (sans attendre la réponse : l'app s'affiche tout de suite)
   try {
-    await navigator.storage?.persist?.();
+    navigator.storage?.persist?.().catch(() => {});
   } catch {}
   // Report automatique : à minuit si l'app est ouverte, et à chaque retour sur l'app
   let last = todayISO();

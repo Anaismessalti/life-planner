@@ -174,9 +174,11 @@ export function monthSummary(data: FinanceData, month: ISOMonth, opts?: { today?
     if (o.confirmed !== undefined) add(real, key(o.budgetCategoryId), o.confirmed);
     else add(pend, key(o.budgetCategoryId), o.planned);
   }
+  const spendDays = new Map<string, Set<string>>();
   for (const e of exp) {
     add(real, key(e.budgetCategoryId), e.amount);
     add(vari, key(e.budgetCategoryId), e.amount);
+    if (e.amount > 0) spendDays.set(key(e.budgetCategoryId), (spendDays.get(key(e.budgetCategoryId)) || new Set()).add(e.date));
   }
   // Projection : seulement pour le mois en cours, après au moins 7 jours, au rythme des dépenses variables.
   const today = opts?.today;
@@ -189,7 +191,8 @@ export function monthSummary(data: FinanceData, month: ISOMonth, opts?: { today?
       const pending = r2(pend.get(id) || 0);
       const limit = c && !c.deleted ? limitFor(c, month) : undefined;
       const v = vari.get(id) || 0;
-      const projected = elapsed >= 7 && v > 0 && elapsed < daysInM ? r2(amount + pending + (v / elapsed) * (daysInM - elapsed)) : undefined;
+      // Un seul gros achat (un manteau le 2) ne fait pas un « rythme » : il faut des dépenses sur au moins 3 jours différents.
+      const projected = elapsed >= 7 && v > 0 && elapsed < daysInM && (spendDays.get(id)?.size || 0) >= 3 ? r2(amount + pending + (v / elapsed) * (daysInM - elapsed)) : undefined;
       return {
         id,
         name: c ? c.name + (c.deleted ? ' (supprimée)' : '') : 'Sans catégorie',

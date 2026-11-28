@@ -6,7 +6,7 @@ import { db, remove, upsert, create, update } from '../db/db';
 import type { DayLog, DayPhoto, ISODate, Task } from '../db/types';
 import { setOutcome } from '../lib/agenda';
 import { addDays, capitalize, fmt } from '../lib/dates';
-import { MOODS } from '../lib/journal';
+import { MOODS, moodWord } from '../lib/journal';
 import { compressPhoto, memoryLine, onThisDay } from '../lib/memories';
 import { expandTasks, isOpen, moveTask, newTaskDefaults, setDone, type TaskView } from '../lib/tasks';
 import { navigate } from '../lib/ui-store';
@@ -161,7 +161,7 @@ export function OnThisDay({ logs, today, trackerName }: { logs: DayLog[]; today:
                 </div>
                 {line && <div className="line-clamp-3 font-serif text-[18px] italic leading-snug text-plum">{line}</div>}
                 {m.log.title && m.log.highlight && <div className="line-clamp-2 text-sm text-soft">{m.log.highlight}</div>}
-                {mood && <div className="font-serif text-sm italic text-soft">a {mood.label} day</div>}
+                {mood && <div className="font-serif text-sm italic text-soft">{moodWord(mood.label, 'day')}</div>}
               </div>
             </button>
           );
@@ -246,7 +246,7 @@ export function EveningRitual({ today, log, allTasks, onClose }: { today: ISODat
                 <div key={t.id} className="card space-y-2 p-3" data-testid="ritual-task">
                   <div className="font-medium">{t.title}</div>
                   <div className="flex flex-wrap gap-1.5">
-                    <button className="chip chip-on text-xs" onClick={() => act(t, 'done')}>
+                    <button className="chip text-xs" onClick={() => act(t, 'done')}>
                       <Check size={13} /> Faite
                     </button>
                     <button className="chip text-xs" onClick={() => act(t, 'tomorrow')} data-testid="ritual-tomorrow">
@@ -311,7 +311,9 @@ export function EveningCard({ today, log, onOpen }: { today: ISODate; log?: DayL
       <button className="card flex w-full items-center gap-3 overflow-hidden p-0 text-left" onClick={onOpen} data-testid="evening-closed">
         {photo ? <img src={photo.data} alt="" className="h-20 w-20 shrink-0 object-cover" /> : <span className="ml-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blush text-plum"><Check size={18} /></span>}
         <span className="min-w-0 flex-1 py-3 pr-3">
-          <span className="block text-[11px] font-medium uppercase tracking-wider text-soft">Journée fermée</span>
+          <span className="block text-[11px] font-medium uppercase tracking-wider text-soft">
+            Journée fermée{log.mood ? <span className="normal-case tracking-normal"> · {moodWord(MOODS[log.mood - 1].label, 'day')}{log.score ? ` · ${log.score}/10` : ''}</span> : null}
+          </span>
           <span className="block truncate font-serif text-[18px] italic text-plum">{log.title || log.highlight || capitalize(fmt(today, 'EEEE d MMMM'))}</span>
         </span>
       </button>

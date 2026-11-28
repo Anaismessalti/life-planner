@@ -121,7 +121,8 @@ export function JournalRead({ logs, trackers, contacts }: { logs: DayLog[]; trac
   const query = useDeferredValue(q);
   const [onlyPhotos, setOnlyPhotos] = useState(false);
   const [shown, setShown] = useState(PAGE);
-  const photoIds = useLiveQuery(async () => new Set((await db.photos.toArray()).filter((p) => !p.deleted).map((p) => p.id)), [], new Set<string>());
+  // Seulement les identifiants (pas les images) : léger, même après des mois de photos.
+  const photoIds = useLiveQuery(async () => new Set((await db.photos.toCollection().primaryKeys()) as string[]), [], new Set<string>());
   const days = useMemo(() => {
     const tr = new Map(trackers.map((t) => [t.id, t]));
     const ct = new Map(contacts.map((c) => [c.id, c.name]));

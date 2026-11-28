@@ -119,10 +119,13 @@ describe('budget dépassé', () => {
   });
 
   it('projection de fin de mois et remboursement', () => {
-    const s = monthSummary(fin([cat({ monthlyLimit: 300 })], [exp('a', 200, '2026-11-05'), exp('r', -20, '2026-11-08')]), '2026-11', { today: '2026-11-15' });
+    // un seul gros achat ne fait pas un rythme : pas de projection
+    const one = monthSummary(fin([cat({ monthlyLimit: 300 })], [exp('a', 200, '2026-11-05'), exp('r', -20, '2026-11-08')]), '2026-11', { today: '2026-11-15' });
+    expect(one.byCategory.find((x) => x.id === 'resto')!.projected).toBeUndefined();
+    const s = monthSummary(fin([cat({ monthlyLimit: 300 })], [exp('a', 80, '2026-11-02'), exp('b', 60, '2026-11-06'), exp('c', 60, '2026-11-11'), exp('r', -20, '2026-11-12')]), '2026-11', { today: '2026-11-15' });
     const c = s.byCategory.find((x) => x.id === 'resto')!;
     expect(c.amount).toBe(180);
-    expect(c.projected).toBeGreaterThan(300); // 180 € en 15 jours → environ 360 € sur 30 jours
+    expect(c.projected).toBeGreaterThan(300); // 180 € en 15 jours, sur 3 jours différents → environ 360 € sur 30 jours
   });
 });
 
@@ -138,9 +141,9 @@ describe('habitudes à la semaine', () => {
     const [w] = weekStatus(normalizeHabits([{ id: 'tr-sport', perWeek: 3 }]), by, '2026-11-26', trackers);
     expect(w.days.map((d) => d.state)).toEqual(['done', 'logged', 'soft', 'future', 'future', 'future', 'future']);
     expect(w.done).toBe(1);
-    expect(w.target).toBe(3); // ceil(3 × 6/7)
+    expect(w.target).toBe(2); // une journée douce allège vraiment : floor(3 × 6/7)
     const many = new Map(['2026-11-23', '2026-11-24', '2026-11-25'].map((d) => [d, L(d, { soft: true })]));
-    expect(weekStatus(normalizeHabits([{ id: 'tr-sport', perWeek: 3 }]), many, '2026-11-26', trackers)[0].target).toBe(2);
+    expect(weekStatus(normalizeHabits([{ id: 'tr-sport', perWeek: 3 }]), many, '2026-11-26', trackers)[0].target).toBe(1); // 3 journées douces : 3 × 4/7 → 1
   });
 
   it('reprise en douceur après une interruption, jamais de série perdue', () => {
@@ -174,8 +177,8 @@ describe('bilan du mois', () => {
     expect(r.coverage).toMatchObject({ logged: 20, elapsed: 20, partial: false });
     expect(r.lived.join(' ')).toContain('Plus de sport que d\'habitude : 20 jours, contre environ 7');
     expect(r.done.join(' ')).toContain('Sport : 20 fois, objectif tenu');
-    // l'humeur 3 sur 20 jours : un mois en demi-teinte
-    expect(r.lived[0]).toMatch(/^Un mois en demi-teinte : humeur moyenne 3\/5 sur 20 jours notés \(d'habitude 3\)/);
+    // l'humeur 3 sur 20 jours, comme d'habitude
+    expect(r.lived[0]).toMatch(/^Un mois dans tes habitudes : humeur moyenne 3\/5 sur 20 jours notés \(d'habitude 3\)/);
   });
 
   it('un mois peu renseigné est signalé comme partiel et ne compare rien', () => {

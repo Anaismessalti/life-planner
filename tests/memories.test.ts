@@ -13,9 +13,11 @@ describe('Ce jour-là', () => {
   });
 
   it('remonte la semaine, le mois et l’année quand ces jours ont été notés', () => {
-    const logs = [L('2026-11-20', { highlight: 'Fou rire au Perchoir' }), L('2026-10-27', { mood: 4 }), L('2025-11-27', { title: 'Le jour de la neige' })];
+    const logs = [L('2026-11-20', { highlight: 'Fou rire au Perchoir' }), L('2026-10-27', { text: 'Brunch chez Inès' }), L('2025-11-27', { title: 'Le jour de la neige' })];
     const m = onThisDay(logs, '2026-11-27');
     expect(m.map((x) => x.key)).toEqual(['week', 'month', 'year']);
+    // une humeur seule ou des cases cochées ne font pas un souvenir
+    expect(onThisDay([L('2026-11-20', { mood: 1, items: [{ trackerId: 'tr-spm' }] })], '2026-11-27')).toEqual([]);
     expect(memoryLine(m[2].log, () => undefined)).toBe('Le jour de la neige');
   });
 

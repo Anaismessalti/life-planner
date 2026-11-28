@@ -34,6 +34,7 @@ export function QuickAdd() {
       title: p.title,
       date: p.date || today,
       time: p.time,
+      duration: p.duration,
       priority: p.priority || 'should',
       subtasks: [],
       status: 'todo',
@@ -61,8 +62,8 @@ export function QuickAdd() {
           aria-label="Tâche rapide"
         />
         <p className="mt-1.5 text-xs text-soft">
-          {p && (p.date || p.time || p.priority)
-            ? `Compris : ${p.kind === 'event' ? 'rendez-vous ' : ''}${p.date ? relativeDay(p.date, today).toLowerCase() : "aujourd'hui"}${p.time ? ' à ' + p.time : ''}${p.priority ? ' · à faire absolument' : ''} — Entrée pour valider`
+          {p && (p.date || p.time || p.priority || p.duration)
+            ? `Compris : ${p.kind === 'event' ? 'rendez-vous ' : ''}${p.date ? relativeDay(p.date, today).toLowerCase() : "aujourd'hui"}${p.time ? ' à ' + p.time : ''}${p.duration ? ` · ${p.duration >= 60 ? `${Math.floor(p.duration / 60)} h${p.duration % 60 ? String(p.duration % 60).padStart(2, '0') : ''}` : `${p.duration} min`}` : ''}${p.priority === 'must' ? ' · à faire absolument' : ''} — Entrée pour valider`
             : 'Astuce : utilise le micro du clavier pour dicter. « ! » = à faire absolument.'}
         </p>
       </form>

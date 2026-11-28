@@ -155,7 +155,8 @@ export function weekStatus(habits: { id: string; perWeek: number }[], byDate: Ma
     });
     let last: string | undefined;
     for (const [d, l] of byDate) if (d <= today && l.items.some((i) => i.trackerId === h.id) && (!last || d > last)) last = d;
-    const target = Math.max(1, Math.ceil((h.perWeek * (7 - softDays)) / 7));
+    // Chaque journée douce allège vraiment l'objectif (3 par semaine, 2 jours doux → 2).
+    const target = Math.max(1, Math.floor((h.perWeek * (7 - softDays)) / 7 + 1e-9));
     out.push({
       tracker,
       perWeek: h.perWeek,

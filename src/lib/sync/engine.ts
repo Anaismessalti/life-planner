@@ -38,17 +38,23 @@ export async function syncOnce(remote: RemoteAdapter): Promise<{ pushed: number;
   const cursor = await getMeta<number>('syncCursor', 0);
   const { records, cursor: next } = await remote.pull(cursor);
   let pulled = 0;
-  for (const { table, record } of records) {
-    if (!SYNC_TABLES.includes(table)) continue;
-    await db.transaction('rw', db.table_(table), db.outbox, async () => {
-      const local = await db.table_(table).get(record.id);
-      const merged = mergeRecords(local, record);
-      if (local && sameContent(local, merged)) return;
-      await db.table_(table).put(merged);
-      pulled++;
-      // Si la version locale contenait des champs plus récents, on renvoie la fusion.
-      if (!sameContent(merged, record)) {
-        await db.outbox.put({ key: `${table}/${record.id}`, table, id: record.id, updatedAt: merged.updatedAt });
+  const known = records.filter((r) => SYNC_TABLES.includes(r.table));
+  // Par paquets de 200, chacun dans une seule transaction : l'écran ne se recalcule pas 2 000 fois
+  // lors d'une première synchronisation.
+  for (let i = 0; i < known.length; i += 200) {
+    const chunk = known.slice(i, i + 200);
+    const tables = [...new Set(chunk.map((r) => r.table))].map((t) => db.table_(t));
+    await db.transaction('rw', [...tables, db.outbox], async () => {
+      for (const { table, record } of chunk) {
+        const local = await db.table_(table).get(record.id);
+        const merged = mergeRecords(local, record);
+        if (local && sameContent(local, merged)) continue;
+        await db.table_(table).put(merged);
+        pulled++;
+        // Si la version locale contenait des champs plus récents, on renvoie la fusion.
+        if (!sameContent(merged, record)) {
+          await db.outbox.put({ key: `${table}/${record.id}`, table, id: record.id, updatedAt: merged.updatedAt });
+        }
       }
     });
   }
@@ -98,7 +104,8 @@ async function run() {
   running = true;
   setState({ status: 'syncing' });
   try {
-    await syncOnce(active);
+    // Réseau capricieux (wifi d'hôtel…) : on abandonne ce tour au bout de 90 s, rien n'est perdu (la file reste).
+    await Promise.race([syncOnce(active), new Promise((_, rej) => setTimeout(() => rej(new Error('Réseau trop lent, nouvel essai bientôt')), 90_000))]);
     setState({ status: 'idle', lastSync: Date.now(), error: undefined });
     firstSyncResolve?.();
   } catch (e: any) {

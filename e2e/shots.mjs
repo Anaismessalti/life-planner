@@ -79,6 +79,7 @@ for (const [name, dev] of targets) {
     await page.goto(BASE + '#/settings');
     await page.waitForSelector('text=Sauvegardes et export');
     await page.locator('input[type=file][accept*=json]').setInputFiles('e2e/demo-backup.json');
+await page.getByTestId('restore-go').click(); // confirmation avant de remplacer
     await page.waitForTimeout(800);
     if (dark) await page.evaluate(() => { localStorage.setItem('theme', 'dark'); });
     for (const p of pages) {

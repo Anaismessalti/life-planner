@@ -2,8 +2,12 @@
 import type { DayLog, ISODate } from '../db/types';
 import { addDays } from './dates';
 
-/** Une journée vaut souvenir si elle garde quelque chose de parlant (pas seulement une case cochée). */
-export const isMemorable = (l?: DayLog) => !!l && !l.deleted && !!(l.highlight?.trim() || l.title?.trim() || l.text?.trim() || l.mood || l.items.length);
+/**
+ * Une journée vaut souvenir si tu y as écrit quelque chose (titre, moment fort, texte, gratitude).
+ * Une humeur seule ou des cases cochées (bureau, cycle, skincare…) ne font pas un souvenir.
+ */
+export const isMemorable = (l?: DayLog) =>
+  !!l && !l.deleted && !!(l.highlight?.trim() || l.title?.trim() || l.text?.trim() || l.fmj?.grateful?.some((g) => g?.trim()) || l.fmj?.amazing?.some((g) => g?.trim()));
 
 /** Même jour, n mois plus tôt (le 31 mars → le 28 ou 29 février). */
 export function monthsAgo(d: ISODate, n: number): ISODate {

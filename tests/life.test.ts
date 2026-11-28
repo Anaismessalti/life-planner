@@ -83,7 +83,8 @@ describe('agenda dans les stats du journal', () => {
     expect(g.noshow).toBe(1);
     expect(g.unconfirmed).toBe(1);
     expect(g.upcoming).toBe(1);
-    expect(g.tasks).toBe(2 + 4); // t1, t3 + 4 lundis ; t2 compte en octobre, t4 n'est plus nécessaire
+    expect(g.tasks).toBe(2); // t1, t3 ; t2 compte en octobre, t4 n'est plus nécessaire
+    expect(g.routine).toEqual({ done: 0, total: 4 }); // les 4 lundis, comptés à part
     expect(g.done).toBe(2);
     expect(g.doneLate).toBe(1);
     expect(g.dropped).toBe(1);

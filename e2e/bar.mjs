@@ -5,7 +5,7 @@ for (const [n, d] of [['se', devices['iPhone SE']], ['13', devices['iPhone 13']]
   const p = await c.newPage();
   await p.clock.install({ time: new Date('2026-11-26T01:30:00+01:00') });
   await p.goto('http://localhost:4173/');
-  await p.waitForSelector('text=Ma journée');
+  await p.waitForSelector('text=Au programme');
   const box = await p.getByTestId('fab').boundingBox();
   const vw = p.viewportSize().width;
   console.log(n, 'centre du bouton', box.x + box.width / 2, 'centre écran', vw / 2);

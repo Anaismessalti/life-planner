@@ -3,7 +3,7 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, MapPin, Plus, Settings a
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { GrowText, SavedText, Section, Segmented, toast } from '../components/ui';
 import { JournalRead } from './JournalRead';
-import { create, db, upsert } from '../db/db';
+import { create, db, update } from '../db/db';
 import type { Contact, DayItem, DayLog, ISODate, Tracker } from '../db/types';
 import { WEEKDAYS_SHORT, addDays, addMonths, capitalize, fmt, fmtMonth, isISODate, monthOf, monthStart, range, relativeDay, weekStart } from '../lib/dates';
 import { eur, parseAmount } from '../lib/finance';
@@ -50,12 +50,23 @@ let chain: Promise<unknown> = Promise.resolve();
 export function saveLog(date: ISODate, patch: Partial<DayLog> | ((cur: DayLog) => Partial<DayLog>)) {
   chain = chain
     .then(async () => {
-      const found = await db.daylogs.get(date);
-      const cur: DayLog = found && !found.deleted ? found : ({ id: date, date, items: [], createdAt: 0, updatedAt: 0 } as DayLog);
-      const p = typeof patch === 'function' ? patch(cur) : patch;
-      if (!Object.keys(p).length) return;
-      const { createdAt: _c, updatedAt: _u, _ts, deleted: _d, ...rest } = cur;
-      await upsert<DayLog>('daylogs', { ...rest, id: date, date, items: cur.items || [], ...p });
+      // Lecture et écriture dans la même transaction : une synchronisation ne peut pas se glisser entre les deux.
+      await db.transaction('rw', db.daylogs, db.outbox, async () => {
+        const found = await db.daylogs.get(date);
+        const cur: DayLog = found && !found.deleted ? found : ({ id: date, date, items: [], createdAt: 0, updatedAt: 0 } as DayLog);
+        const p = typeof patch === 'function' ? patch(cur) : patch;
+        if (!Object.keys(p).length) return;
+        if (!found) {
+          // Journée nouvelle sur cet appareil : seuls les champs saisis sont « récents » ; la liste vide par défaut
+          // ne doit jamais effacer les activités notées sur un autre appareil.
+          await create<DayLog>('daylogs', { id: date, date, items: [], ...p } as any, { fresh: Object.keys(p), baseTs: 1 });
+        } else if (found.deleted) {
+          await update<DayLog>('daylogs', date, { items: [], ...p, deleted: undefined } as Partial<DayLog>);
+        } else {
+          // Seulement ce qui change : le reste de la journée garde ses horodatages.
+          await update<DayLog>('daylogs', date, p);
+        }
+      });
     })
     .catch((e) => console.error('Journal', e));
   return chain;
@@ -376,7 +387,8 @@ export function JournalPage() {
 /** Five Minute Journal, à part de « Ma journée » : un jour à la fois, et la semaine en un coup d'œil. */
 function FmjView({ date, setDate, today, logs }: { date: ISODate; setDate: (d: ISODate) => void; today: ISODate; logs: DayLog[] }) {
   const log = logs.find((l) => l.id === date);
-  const week = range(addDays(today, -6), today);
+  // La semaine en cours, du lundi au dimanche (comme le calendrier).
+  const week = range(weekStart(today), addDays(weekStart(today), 6));
   return (
     <div className="mx-auto max-w-xl space-y-4" data-testid="fmj-view">
       <div className="card anim-rise flex items-center justify-between p-3">
@@ -400,10 +412,10 @@ function FmjView({ date, setDate, today, logs }: { date: ISODate; setDate: (d: I
             const m = morningDone(f);
             const e = eveningDone(f);
             return (
-              <button key={d} onClick={() => setDate(d)} className={`rounded-xl py-1.5 ${d === date ? 'bg-blush' : ''}`} data-testid={`fmj-week-${d}`} aria-label={`${fmt(d, 'EEEE d')} : ${m ? 'matin fait' : 'matin vide'}, ${e ? 'soir fait' : 'soir vide'}`}>
+              <button key={d} onClick={() => setDate(d)} disabled={d > today} className={`rounded-xl py-1.5 disabled:opacity-35 ${d === date ? 'bg-blush' : ''}`} data-testid={`fmj-week-${d}`} aria-label={`${fmt(d, 'EEEE d')} : ${m ? 'matin fait' : 'matin vide'}, ${e ? 'soir fait' : 'soir vide'}`}>
                 <div className="text-[10px] uppercase text-soft">{fmt(d, 'EEEEE')}</div>
                 <div className="mt-1 flex justify-center gap-1">
-                  <span className={`h-2 w-2 rounded-full ${m ? 'bg-[#E9B730]' : 'bg-line'}`} />
+                  <span className={`h-2 w-2 rounded-full ${m ? 'bg-mauve' : 'bg-line'}`} />
                   <span className={`h-2 w-2 rounded-full ${e ? 'bg-plum' : 'bg-line'}`} />
                 </div>
               </button>
@@ -411,7 +423,7 @@ function FmjView({ date, setDate, today, logs }: { date: ISODate; setDate: (d: I
           })}
         </div>
         <p className="mt-2 text-[11px] text-soft">
-          <span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#E9B730]" /> matin <span className="ml-2 mr-1 inline-block h-2 w-2 rounded-full bg-plum" /> soir
+          <span className="mr-1 inline-block h-2 w-2 rounded-full bg-mauve" /> matin <span className="ml-2 mr-1 inline-block h-2 w-2 rounded-full bg-plum" /> soir
         </p>
       </div>
     </div>
@@ -509,9 +521,20 @@ function DayEditor({ date, setDate, today, log, trackers, contacts }: { date: IS
   const patchItem = (id: string, p: Partial<DayItem>) => saveLog(date, (cur) => ({ items: cur.items.map((i) => (i.trackerId === id ? { ...i, ...p } : i)) }));
   const names = useMemo(() => new Map(contacts.map((c) => [c.id, c.name])), [contacts]);
   const removeItem = async (t: Tracker) => {
+    const before = items.find((i) => i.trackerId === t.id);
+    const spent = amounts.get(t.id);
     await saveLog(date, (cur) => ({ items: cur.items.filter((i) => i.trackerId !== t.id) }));
     await setJournalExpense(date, t, undefined, undefined, contacts);
     setEditing(null);
+    // Retirer par erreur une activité (avec son commentaire et sa dépense) se rattrape d'un geste.
+    if (before)
+      toast(`${t.name} retiré`, {
+        label: 'Annuler',
+        run: async () => {
+          await saveLog(date, (cur) => (cur.items.some((i) => i.trackerId === t.id) ? {} : { items: [...cur.items, before] }));
+          if (spent) await setJournalExpense(date, t, spent, before, contacts);
+        },
+      });
   };
   const [open, setOpen] = useState<string[]>(() => {
     try {

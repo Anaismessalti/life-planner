@@ -4,7 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Progress, Section, Segmented, toast } from '../components/ui';
 import { db } from '../db/db';
 import type { Contact, DayLog, ISODate, Tracker, TrackerGroup } from '../db/types';
-import { WEEKDAYS_SHORT, addDays, capitalize, diffDays, fmt, monthOf, range, weekStart } from '../lib/dates';
+import { WEEKDAYS_SHORT, addDays, capitalize, fmt, monthOf, range, weekStart } from '../lib/dates';
 import { analyze, fmtPct, periodOf, shiftPeriod, trend, type Analytics, type Count, type PeriodKind } from '../lib/analytics';
 import { eur, monthSummary } from '../lib/finance';
 import { DEFAULT_HABITS, normalizeHabits, type HabitSetting } from '../lib/bridge';
@@ -127,7 +127,8 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
   const review = useMemo(() => {
     const full = group ? analyze(period, logs, trackers, contacts, expenses, today, null, agendaIn) : a;
     const budget = period.kind === 'month' ? monthSummary(finance, monthOf(period.from), { today }).byCategory : undefined;
-    return buildReview(full, history, { habits: habitsOver(full, normalizeHabits(habitsRaw)), budget });
+    const soft = logs.filter((l) => !l.deleted && l.soft && l.date >= period.from && l.date <= (period.to < today ? period.to : today)).length;
+    return buildReview(full, history, { habits: habitsOver(full, normalizeHabits(habitsRaw), soft), budget });
   }, [a, group, period, logs, trackers, contacts, expenses, today, agendaIn, finance, history, habitsRaw]);
   const crossEnd = period.to < today ? period.to : today;
   const cross = useMemo(() => crossings(logs, trackers, crossEnd), [logs, trackers, crossEnd]);
@@ -232,18 +233,34 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
 
           <ReviewCard r={review} />
 
+          {/* Les vraies conclusions juste après le bilan, pas tout en bas de la page. */}
+          {cross.length > 0 && (
+            <Section title="Ce que je remarque">
+              <div className="card space-y-2 p-3" data-testid="crossings">
+                {cross.map((c) => (
+                  <p key={c.id} className="rounded-xl bg-blush/50 px-3 py-2 text-sm text-plum">
+                    {c.text}
+                  </p>
+                ))}
+                <p className="text-[11px] text-soft">
+                  Sur tes {CROSS.days} derniers jours, seulement quand l'écart est net et qu'il y a au moins 8 jours de chaque côté. Ce sont des observations, pas des causes : un jour de sport est peut-être aussi un jour où tu avais plus de temps.
+                </p>
+              </div>
+            </Section>
+          )}
+
           <Wrapped a={a} prev={prev} />
 
           <div className="card space-y-2 p-4" data-testid="completion">
-            {a.elapsed < REVIEW.young ? (
+            {a.logged < REVIEW.young ? (
               <>
                 <div className="flex items-baseline justify-between">
                   <div className="label">Début de ton journal</div>
                   <div className="font-serif text-xl font-semibold text-plum">
-                    Jour {a.elapsed} sur {REVIEW.young}
+                    Jour {a.logged} sur {REVIEW.young}
                   </div>
                 </div>
-                <Progress value={(a.elapsed / REVIEW.young) * 100} />
+                <Progress value={(a.logged / REVIEW.young) * 100} />
                 <p className="text-[11px] leading-snug text-soft">
                   {a.logged} jour{a.logged > 1 ? 's' : ''} noté{a.logged > 1 ? 's' : ''}. Les pourcentages apparaîtront au {REVIEW.young}e jour : avant, « 1 jour sur 1 » ferait
                   toujours 100 % et ne dirait rien de ta vie.
@@ -259,8 +276,7 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                 </div>
                 <Progress value={a.completion * 100} />
                 <p className="text-[11px] leading-snug text-soft">
-                  Un jour non renseigné n'est pas un jour « sans activité ». Les pourcentages se calculent sur les {a.elapsed} jours écoulés
-                  {a.elapsed < diffDays(period.to < today ? period.to : today, period.from) + 1 ? ' depuis que tu utilises ton journal' : ''}.
+                  Un jour non renseigné n'est pas un jour « sans activité ». Les pourcentages se calculent sur les {a.logged} jours où tu as rempli ton journal.
                 </p>
               </>
             )}
@@ -274,7 +290,7 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                   <div className="mt-0.5 font-serif text-[28px] font-semibold leading-none" data-testid={`tile-${t.id}-days`}>
                     {t.c.days}
                     <span className={`ml-1 font-sans text-xs font-normal ${t.dark ? 'text-white/80' : 'text-soft'}`}>
-                      jour{t.c.days > 1 ? 's' : ''}{a.elapsed >= REVIEW.young ? ` · ${fmtPct(t.c.freq)}` : ''}
+                      jour{t.c.days > 1 ? 's' : ''}{a.logged >= REVIEW.young ? ` · ${fmtPct(t.c.freq)}` : ''}
                     </span>
                   </div>
                   <div className={t.dark ? '[&_*]:!text-white/80' : ''}>
@@ -330,7 +346,7 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                   <div key={f.id} className="flex items-center gap-2 text-sm" data-testid={`feeling-stat-${f.id}`}>
                     <span className={`w-28 shrink-0 truncate ${f.id === 'hendaye' ? 'text-xs font-semibold tracking-widest' : 'font-serif italic'}`}>{f.label}</span>
                     <div className="flex-1">
-                      <Progress value={(f.days / Math.max(1, a.elapsed)) * 100} color={f.color} className="h-1.5" />
+                      <Progress value={(f.days / Math.max(1, a.logged)) * 100} color={f.color} className="h-1.5" />
                     </div>
                     <span className="w-24 shrink-0 text-right text-xs text-soft">
                       {f.days} j · int. {String(f.avgLevel).replace('.', ',')}/3
@@ -380,20 +396,6 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
 
           {a.logged > 0 && <BalanceSection poles={poles} logged={a.logged} />}
 
-          {cross.length > 0 && (
-            <Section title="Ce que je remarque">
-              <div className="card space-y-2 p-3" data-testid="crossings">
-                {cross.map((c) => (
-                  <p key={c.id} className="rounded-xl bg-blush/50 px-3 py-2 text-sm text-plum">
-                    {c.text}
-                  </p>
-                ))}
-                <p className="text-[11px] text-soft">
-                  Sur tes {CROSS.days} derniers jours, seulement quand l'écart est net et qu'il y a au moins 8 jours de chaque côté. Ce sont des observations, pas des causes : un jour de sport est peut-être aussi un jour où tu avais plus de temps.
-                </p>
-              </div>
-            </Section>
-          )}
 
           <Section title="Activité par activité">
             <div className="card divide-y divide-line/70 px-3 py-1">
@@ -419,7 +421,7 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                       {p.spent > 0 && <span className="ml-1 text-xs font-normal text-soft">· {eur(p.spent)}</span>}
                     </span>
                     <span className="w-12 text-right">{p.days}</span>
-                    <span className="w-14 text-right text-soft">{a.elapsed >= REVIEW.young ? fmtPct(p.freq) : ''}</span>
+                    <span className="w-14 text-right text-soft">{a.logged >= REVIEW.young ? fmtPct(p.freq) : ''}</span>
                   </button>
                 ))}
               {a.totalActivities === 0 && <p className="py-3 text-center text-sm text-soft">Aucune activité sur cette période.</p>}
@@ -443,7 +445,7 @@ export function AnalyticsView({ logs, trackers, contacts, today }: { logs: DayLo
                       </div>
                     ))}
                     <p className="pt-1 text-[11px] text-soft">
-                      Vie sociale : {a.key.social.days} jour{a.key.social.days > 1 ? 's' : ''} avec au moins une personne{a.elapsed >= REVIEW.young ? ` (${fmtPct(a.key.social.freq)} des jours)` : ''}.
+                      Vie sociale : {a.key.social.days} jour{a.key.social.days > 1 ? 's' : ''} avec au moins une personne{a.logged >= REVIEW.young ? ` (${fmtPct(a.key.social.freq)} des jours)` : ''}.
                     </p>
                   </div>
                 )}
@@ -741,7 +743,7 @@ function WellbeingSections({ a, prev }: { a: Analytics; prev: Analytics }) {
                 <div className="font-serif text-2xl font-semibold text-plum" data-testid="fmj-days">
                   {f.days}
                 </div>
-                <div className="text-[10px] uppercase tracking-wider text-soft">jours{a.elapsed >= REVIEW.young ? ` · ${fmtPct(f.days / Math.max(1, a.elapsed))}` : ''}</div>
+                <div className="text-[10px] uppercase tracking-wider text-soft">jours{a.logged >= REVIEW.young ? ` · ${fmtPct(f.days / Math.max(1, a.logged))}` : ''}</div>
               </div>
               <div>
                 <div className="font-serif text-2xl font-semibold text-plum">{f.gratitudes}</div>
@@ -800,11 +802,12 @@ function AgendaSection({ a }: { a: Analytics }) {
         </div>
         {g.tasks > 0 && <Progress value={g.doneRate * 100} />}
         <p className="text-[11px] leading-snug text-soft" data-testid="agenda-detail">
-          {g.planned} rendez-vous prévus : {g.events} ont eu lieu
-          {lost ? `, ${g.cancelled} annulé${g.cancelled > 1 ? 's' : ''}, ${g.noshow} pas honoré${g.noshow > 1 ? 's' : ''}` : ''}
+          {g.planned} rendez-vous prévu{g.planned > 1 ? 's' : ''} : {g.events} {g.events > 1 ? 'ont' : 'a'} eu lieu
+          {lost ? `, ${g.cancelled} annulé${g.cancelled > 1 ? 's' : ''}, ${g.noshow} manqué${g.noshow > 1 ? 's' : ''}` : ''}
           {g.unconfirmed ? `, ${g.unconfirmed} à confirmer (pas encore comptés)` : ''}.
           {g.tasks > 0 ? ` ${fmtPct(g.doneRate)} des tâches prévues jusqu'à aujourd'hui sont faites${g.doneLate ? `, dont ${g.doneLate} après un report` : ''}.` : ''}
-          {g.dropped ? ` ${g.dropped} retirée${g.dropped > 1 ? 's' : ''} car plus nécessaire${g.dropped > 1 ? 's' : ''} (non comptée${g.dropped > 1 ? 's' : ''}).` : ''} Une tâche reportée compte pour le jour où elle était prévue au départ.
+          {g.dropped ? ` ${g.dropped} retirée${g.dropped > 1 ? 's' : ''} par toi car plus nécessaire${g.dropped > 1 ? 's' : ''} (non comptée${g.dropped > 1 ? 's' : ''}).` : ''}
+          {g.routine.total > 0 ? ` Tâches récurrentes : ${g.routine.done} sur ${g.routine.total}.` : ''} Une tâche reportée compte pour le jour où elle était prévue au départ.
         </p>
         {g.byCategory.length > 0 && (
           <div className="space-y-1.5 border-t border-line/60 pt-2">

@@ -3,7 +3,7 @@
 import type { Category, Contact, DayLog, Expense, ISODate, Task, Tracker, TrackerGroup } from '../db/types';
 import { addDays, addMonths, diffDays, fmt, fmtMonth, monthEnd, monthOf, monthStart, range, weekStart } from './dates';
 import { FEELINGS, formOf } from './lifeforms';
-import { expandTasks, isSeries, postponeCount } from './tasks';
+import { expandTasks, isMultiDay, isSeries, postponeCount, spansDay } from './tasks';
 import { avgBedtime, eveningDone, morningDone, sleepMinutes } from './wellbeing';
 
 export type PeriodKind = 'week' | 'month' | 'year';
@@ -103,8 +103,10 @@ export interface AgendaStats {
   unconfirmed: number;
   eventDays: number;
   upcoming: number;
-  /** Tâches prévues sur la période, au jour où elles étaient prévues au départ (hors « plus nécessaire »). */
+  /** Tâches ponctuelles prévues sur la période, au jour où elles étaient prévues au départ (hors « plus nécessaire »). */
   tasks: number;
+  /** Tâches récurrentes (ménage, sport…) : occurrences faites sur les occurrences passées. Jamais mêlées au taux ci-dessus. */
+  routine: { done: number; total: number };
   done: number;
   doneLate: number;
   dropped: number;
@@ -130,16 +132,25 @@ export const MIN_GROUP = 8;
 export function agendaStats(period: Period, end: ISODate, input: AgendaInput, byDate: Map<ISODate, DayLog>): AgendaStats {
   const cats = new Map(input.categories.filter((c) => !c.deleted).map((c) => [c.id, c]));
   const all = expandTasks(input.tasks, period.from, period.to);
-  const events = all.filter((t) => t.kind === 'event' && t.date! <= end);
+  // Un séjour compte dans la période où il commence (pas deux fois s'il chevauche deux mois).
+  const events = all.filter((t) => t.kind === 'event' && t.date! >= period.from && t.date! <= end);
   const happened = events.filter((e) => e.outcome === 'happened');
   // Une tâche compte pour le jour où elle était prévue au départ : un report ne la compte jamais deux fois.
   const anchor = (t: Task) => t.originalDate || t.date;
-  const real = input.tasks.filter((t) => !t.deleted && !isSeries(t) && t.kind === 'task' && anchor(t) && anchor(t)! >= period.from && anchor(t)! <= end);
-  const virt = all.filter((t) => t.kind === 'task' && t.virtual && t.date! <= end);
-  const planned = [...real, ...virt];
+  const inPeriod = (t: Task) => !t.deleted && !isSeries(t) && t.kind === 'task' && !!anchor(t) && anchor(t)! >= period.from && anchor(t)! <= end;
+  // Ponctuelles d'un côté, récurrentes de l'autre : une corvée hebdomadaire manquée ne fait pas chuter le taux des tâches.
+  const planned = input.tasks.filter((t) => inPeriod(t) && !t.seriesId);
   const counted = planned.filter((t) => t.outcome !== 'dropped' && t.outcome !== 'skipped');
   const done = counted.filter((t) => t.status === 'done');
-  const eventDays = new Set(happened.map((e) => e.date!));
+  const occ = [...input.tasks.filter((t) => inPeriod(t) && !!t.seriesId), ...all.filter((t) => t.kind === 'task' && t.virtual && t.date! < end)];
+  const routine = { done: occ.filter((t) => t.status === 'done').length, total: occ.filter((t) => t.status === 'done' || (anchor(t) || '') < end).length };
+  // Chaque jour d'un séjour vécu compte (dans la période seulement).
+  const eventDays = new Set<ISODate>();
+  for (const e of all.filter((t) => t.kind === 'event' && t.outcome === 'happened')) {
+    if (isMultiDay(e)) {
+      for (const d of range(e.date! > period.from ? e.date! : period.from, e.endDate! < end ? e.endDate! : end)) if (spansDay(e, d)) eventDays.add(d);
+    } else if (e.date! >= period.from && e.date! <= end) eventDays.add(e.date!);
+  }
   const byCat = new Map<string, { id: string; name: string; color: string; events: number; tasks: number }>();
   for (const t of [...happened, ...counted]) {
     const c = t.categoryId ? cats.get(t.categoryId) : undefined;
@@ -165,6 +176,7 @@ export function agendaStats(period: Period, end: ISODate, input: AgendaInput, by
     eventDays: eventDays.size,
     upcoming: all.filter((t) => t.kind === 'event' && t.date! > end && !t.outcome).length,
     tasks: counted.length,
+    routine,
     done: done.length,
     doneLate: done.filter((t) => postponeCount(t) > 0).length,
     dropped: planned.length - counted.length,
@@ -257,7 +269,8 @@ export function analyze(
   }
   const c = (s?: Set<ISODate> | number): Count => {
     const days = typeof s === 'number' ? s : s?.size || 0;
-    return { days, freq: pct(days, elapsed) };
+    // Sur les jours où tu as rempli ton journal : un jour non renseigné n'est pas un jour « sans ».
+    return { days, freq: pct(days, logged) };
   };
   const union = (...ids: string[]) => {
     const u = new Set<ISODate>();

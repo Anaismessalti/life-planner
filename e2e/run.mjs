@@ -14,7 +14,7 @@ page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text
 // Horloge contrôlée : mercredi 25 novembre 2026, 9 h
 await page.clock.install({ time: new Date('2026-11-25T09:00:00+01:00') });
 await page.goto(BASE);
-await page.waitForSelector('text=Ma journée');
+await page.waitForSelector('text=Au programme');
 ok('Accueil : la date, sans salutation', await page.getByTestId('today-title').textContent().then((t) => /^Mercredi 25 novembre$/.test(t.trim())));
 ok('Accueil : résumé de la journée', await page.getByTestId('today-summary').count());
 ok("Date du jour affichée", await page.locator('text=Mercredi 25 novembre').count());
@@ -71,7 +71,7 @@ await page.keyboard.press('Enter');
 await page.waitForTimeout(300);
 await page.clock.setFixedTime(new Date('2026-11-27T08:00:00+01:00'));
 await page.reload();
-await page.waitForSelector('text=Ma journée');
+await page.waitForSelector('text=Au programme');
 ok('Report automatique après 2 jours sans ouvrir', await page.locator('[data-testid=task-item]:has-text("Envoyer le dossier") >> text=/prévue/i').count());
 ok('Tâche terminée non reportée', !(await page.locator('[data-testid=task-item]:has-text("Appeler la banque")').count()));
 await page.locator('[data-testid=task-item]:has-text("Envoyer le dossier")').click();

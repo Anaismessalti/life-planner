@@ -7,7 +7,7 @@ import { DEFAULT_HABITS, normalizeHabits, weekStatus, type HabitSetting } from '
 import { addDays, fmt, monthOf } from '../lib/dates';
 import { eur, monthSummary } from '../lib/finance';
 import { useFinance, useSetting } from '../lib/hooks';
-import { MOODS } from '../lib/journal';
+import { MOODS, moodWord } from '../lib/journal';
 import { lingering, reviewWeek, upcoming, weekRecap } from '../lib/weekly';
 import { moveTask, postponeCount } from '../lib/tasks';
 import { saveLog } from '../pages/Journal';
@@ -78,7 +78,7 @@ export function WeeklyReview({ today, logs, all, trackers, onClose }: { today: I
             {STEPS[step]}
           </p>
           <p className="text-xs text-soft">
-            Du {fmt(from, 'd MMMM')} au {fmt(to, 'd MMMM')}
+            {step === 3 ? `Du ${fmt(addDays(to, 1), 'd MMMM')} au ${fmt(addDays(to, 7), 'd MMMM')}` : `Du ${fmt(from, 'd MMMM')} au ${fmt(to, 'd MMMM')}`}
           </p>
         </div>
 
@@ -98,7 +98,7 @@ export function WeeklyReview({ today, logs, all, trackers, onClose }: { today: I
                 <div className="text-[11px] text-soft">{recap.essentials.chosen ? 'essentiels faits' : 'rendez-vous vécus'}</div>
               </div>
             </div>
-            {mood && <p className="text-center font-serif text-lg italic text-plum">a {mood.label} week</p>}
+            {mood && <p className="text-center font-serif text-lg italic text-plum">{moodWord(mood.label, 'week')}</p>}
             {recap.moments.length > 0 ? (
               <div className="space-y-1.5" data-testid="review-moments">
                 <div className="label">Tes moments forts</div>
@@ -161,7 +161,7 @@ export function WeeklyReview({ today, logs, all, trackers, onClose }: { today: I
                   <span className="w-24 text-right text-xs text-soft">{h.done >= h.target ? 'objectif tenu' : h.done ? 'en chemin' : 'pas cette fois'}</span>
                 </div>
               ))}
-              <p className="pt-1 text-xs text-soft">Une semaine ratée n’efface rien : on repart lundi. Tu peux changer tes objectifs avec le crayon sur l’accueil.</p>
+              <p className="pt-1 text-xs text-soft">Une semaine plus calme n’efface rien : on repart lundi. Tu peux changer tes objectifs avec le crayon sur l’accueil.</p>
             </div>
           ) : (
             <p className="text-sm text-soft">Aucune habitude suivie pour l’instant.</p>

@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, PiggyBank, Plus, Receipt, Trash2, Wallet } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PaymentsList } from '../components/DayViews';
 import { ConfirmButton, Empty, Field, Progress, Section, Segmented, Sheet, Toggle, toast } from '../components/ui';
 import { create, db, uid, update } from '../db/db';
@@ -88,7 +88,12 @@ function Overview({ s, month, today }: { s: MonthSummary; month: string; today: 
         <div className="pointer-events-none absolute -bottom-12 right-16 h-28 w-28 rounded-full bg-white/5" />
         <div className="relative text-xs font-medium uppercase tracking-wider text-white/75">Reste à vivre du mois</div>
         <div className="relative mt-1 font-serif text-5xl font-semibold" data-testid="remaining">{eur(s.remainingForecast)}</div>
-        <div className="relative mt-1 text-sm text-white/80">Sur ton compte à ce jour (selon ce que tu as confirmé) : {eur(s.remainingActual)}</div>
+        {/* Tant qu'aucun revenu du mois n'est confirmé, le « réel » serait négatif sans raison : on l'explique au lieu d'alarmer. */}
+        <div className="relative mt-1 text-sm text-white/80" data-testid="remaining-actual">
+          {s.incomePlanned > 0 && s.incomeReceived === 0
+            ? 'Revenus du mois pas encore confirmés : le réel s’affichera dès que tu les auras reçus.'
+            : `Réel à ce jour (selon ce que tu as confirmé) : ${eur(s.remainingActual)}`}
+        </div>
         <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-white/20">
           <div className="h-full rounded-full bg-white/90 transition-all duration-700" style={{ width: `${Math.min(100, pct)}%` }} />
         </div>
@@ -141,6 +146,7 @@ function Overview({ s, month, today }: { s: MonthSummary; month: string; today: 
           <PaymentsList items={overdue} onToggle={togglePayment} />
         </Section>
       )}
+      {upcoming.length > 0 && (
       <Section title="Prochains prélèvements">
         {upcoming.length ? (
           <div className="space-y-2">
@@ -158,10 +164,9 @@ function Overview({ s, month, today }: { s: MonthSummary; month: string; today: 
               </div>
             ))}
           </div>
-        ) : (
-          <p className="text-sm text-soft">Aucun prélèvement à venir ce mois-ci.</p>
-        )}
+        ) : null}
       </Section>
+      )}
 
       {s.byCategory.length > 0 && (
         <Section title="Par catégorie">
@@ -206,9 +211,7 @@ export function CategoryRow({ c }: { c: CategoryStatus }) {
               : `${eur(c.amount)} sur ${eur(c.limit)} · ${String(pct).replace('.', ',')} % · reste ${eur(c.left || 0)}`}
           </div>
         </>
-      ) : (
-        <div className="text-[11px] text-soft">Pas de plafond pour cette catégorie.</div>
-      )}
+      ) : null}
       {c.pending > 0 && <div className="text-[11px] text-soft">+ {eur(c.pending)} de prélèvements prévus, pas encore confirmés</div>}
       {projOver ? (
         <div className="text-[11px] text-rasp">À ce rythme, tu finirais le mois vers {eur(c.projected!)}, soit {eur(c.projected! - c.limit!)} au-dessus.</div>
@@ -262,6 +265,7 @@ function IncomesTab({ month }: { month: string }) {
               <div className="text-sm font-medium">{i.label}</div>
               <div className="text-xs text-soft">
                 {INCOME_TYPE_LABEL[i.type]} · {FREQ_LABEL[i.frequency]} · le {fmt(i.date, 'd')}
+                {i.endDate ? (i.endDate < todayISO() ? ` · terminé le ${fmt(i.endDate, 'd MMM yyyy')}` : ` · jusqu’au ${fmt(i.endDate, 'd MMM yyyy')}`) : ''}
               </div>
             </div>
             <div className="font-semibold text-[#6B4FA0] dark:text-[#C9B3F0]">{eur(i.amount)}</div>
@@ -590,6 +594,8 @@ export function ExpenseEditor({ id, defaults }: { id?: string; defaults?: { date
     const raw = parseAmount(f.amountText || '');
     if (raw === undefined || raw === 0) return toast('Indique un montant (ex : 12,50)');
     if (raw < 0) return toast('Montant positif uniquement. Pour un remboursement, coche « Remboursement ».');
+    // Une faute de frappe (un zéro de trop) fausserait tout le mois : au-delà de 50 000 €, on demande de vérifier.
+    if (raw > 50_000) return toast('Montant très élevé : vérifie qu’il n’y a pas un zéro de trop');
     if (!isISODate(f.date)) return toast('Choisis une date');
     // Un remboursement est enregistré en négatif dans sa catégorie : il réduit la dépense du mois.
     const amount = f.refund ? -raw : raw;
@@ -705,8 +711,17 @@ export function IncomeEditor({ id }: { id?: string }) {
   const [f, setFs] = useState<Partial<Income> & { amountText?: string }>(
     existing ? { ...existing, amountText: String(existing.amount).replace('.', ',') } : { type: 'salaire', frequency: 'monthly', date: todayISO() },
   );
+  // Les données arrivent parfois un instant après l'ouverture : le formulaire se remplit dès qu'elles sont là.
+  const filled = useRef(!!existing);
+  useEffect(() => {
+    if (existing && !filled.current) {
+      filled.current = true;
+      setFs({ ...existing, amountText: String(existing.amount).replace('.', ',') });
+    }
+  }, [existing]);
   const setF = (x: Partial<typeof f>) => setFs((o) => ({ ...o, ...x }));
   const save = async () => {
+    if (id && !existing) return; // pas encore chargé : ne jamais enregistrer un formulaire vide par-dessus
     const amount = parseAmount(f.amountText || '');
     if (!amount || amount < 0) return toast('Indique un montant positif (ex : 2 000)');
     if (!isISODate(f.date)) return toast('Choisis une date');
@@ -801,8 +816,17 @@ export function FixedEditor({ id }: { id?: string }) {
   const [f, setFs] = useState<Partial<FixedExpense> & { amountText?: string }>(
     existing ? { ...existing, amountText: String(existing.amount).replace('.', ',') } : { frequency: 'monthly', date: todayISO(), active: true },
   );
+  // Les données arrivent parfois un instant après l'ouverture : le formulaire se remplit dès qu'elles sont là.
+  const filled = useRef(!!existing);
+  useEffect(() => {
+    if (existing && !filled.current) {
+      filled.current = true;
+      setFs({ ...existing, amountText: String(existing.amount).replace('.', ',') });
+    }
+  }, [existing]);
   const setF = (x: Partial<typeof f>) => setFs((o) => ({ ...o, ...x }));
   const save = async () => {
+    if (id && !existing) return; // pas encore chargé : ne jamais enregistrer un formulaire vide par-dessus
     const amount = parseAmount(f.amountText || '');
     if (!f.label?.trim()) return toast('Donne un nom (ex : Loyer)');
     if (!amount || amount < 0) return toast('Indique un montant positif');

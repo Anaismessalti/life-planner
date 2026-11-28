@@ -310,7 +310,7 @@ function MonthView({
           const isToday = d === ctx.today;
           const stays = items.filter(isMultiDay);
           // Vue du mois = vue d'ensemble : les rendez-vous (pas les tâches), et les séjours en bandes.
-          const dots = items.filter((t) => t.kind === 'event' && !isMultiDay(t)).slice(0, 4).map((t) => (t.categoryId && ctx.cats.get(t.categoryId)?.color) || '#A83278');
+          const dots = items.filter((t) => t.kind === 'event' && !isMultiDay(t) && t.outcome !== 'cancelled' && t.outcome !== 'noshow').slice(0, 4).map((t) => (t.categoryId && ctx.cats.get(t.categoryId)?.color) || '#A83278');
           const wd = (new Date(d + 'T12:00').getDay() + 6) % 7;
           return (
             <button
@@ -420,7 +420,7 @@ function MonthView({
           })}
         </div>
       ) : (
-        <p className="text-sm text-soft">Aucun voyage ni séjour ce mois-ci. Un week-end, une visite, des vacances : prévois-les ici, ils s’affichent en bande sur le calendrier.</p>
+        <p className="text-xs text-soft">Rien de prévu ce mois-ci.</p>
       )}
     </Section>
   );

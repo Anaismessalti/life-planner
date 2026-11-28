@@ -179,8 +179,8 @@ export function TaskItem({
             <button className="chip min-h-[34px] py-1 text-xs" onClick={(e) => outcome(e, 'cancelled', 'Noté comme annulé')} data-testid="outcome-cancelled">
               Annulé
             </button>
-            <button className="chip min-h-[34px] py-1 text-xs" onClick={(e) => outcome(e, 'noshow', 'Noté comme pas honoré')} data-testid="outcome-noshow">
-              Pas honoré
+            <button className="chip min-h-[34px] py-1 text-xs" onClick={(e) => outcome(e, 'noshow', 'Noté : tu n’as pas pu y aller')} data-testid="outcome-noshow">
+              Pas pu y aller
             </button>
             <button className="chip min-h-[34px] py-1 text-xs" onClick={openMove} data-testid="outcome-moved">
               <CalendarClock size={13} /> Déplacé

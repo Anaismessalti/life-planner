@@ -116,9 +116,29 @@ export function now(): number {
 
 const META_FIELDS = new Set(['id', 'createdAt', 'updatedAt', '_ts']);
 
+/**
+ * Écritures « discrètes » (migrations, réparations au démarrage) : horodatées juste après la valeur
+ * qu'elles corrigent, et non « maintenant ». Ainsi une modification faite entre-temps sur un autre
+ * appareil (plus récente) reste gagnante à la synchronisation.
+ */
+let quiet = 0;
+export async function quietly<R>(fn: () => Promise<R>): Promise<R> {
+  quiet++;
+  try {
+    return await fn();
+  } finally {
+    quiet--;
+  }
+}
+
 function stamp<T extends BaseRecord>(rec: T, fields: string[], t: number): T {
   const ts = { ...(rec._ts || {}) };
-  for (const f of fields) if (!META_FIELDS.has(f)) ts[f] = t;
+  for (const f of fields) {
+    if (META_FIELDS.has(f)) continue;
+    const prev = ts[f] ?? rec.createdAt ?? 0;
+    // Horloge d'un autre appareil en avance : on reste toujours après la valeur précédente.
+    ts[f] = quiet ? prev + 1 : Math.max(t, prev + 1);
+  }
   return { ...rec, updatedAt: t, _ts: ts };
 }
 

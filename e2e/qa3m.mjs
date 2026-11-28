@@ -148,6 +148,7 @@ await page.clock.install({ time: new Date('2026-11-26T10:00:00+01:00') });
 await page.goto(BASE + '#/settings');
 await page.waitForSelector('text=Sauvegardes et export');
 await page.locator('input[type=file][accept*=json]').setInputFiles('e2e/qa-3mois.json');
+await page.getByTestId('restore-go').click(); // confirmation avant de remplacer
 await page.waitForTimeout(1500);
 await page.reload(); // relance comme au matin : report automatique, réparation, migrations
 await page.waitForTimeout(1200);
@@ -172,6 +173,9 @@ ok('Citation du jour affichée', (await page.locator('main p.italic').first().te
 await page.screenshot({ path: 'e2e/shots/qa/today.png', fullPage: true });
 
 // Accueil : le rendez-vous passé du 19 attend une réponse ; « A eu lieu » le fait entrer dans le journal
+// Plus de 3 jours : rangé sous « plus anciens », jamais perdu (avant, il disparaissait au bout de 14 jours)
+ok('Accueil : le Kiné du 19 attend sous « plus anciens sans réponse »', await page.getByTestId('confirm-older').count());
+await page.getByTestId('confirm-older').click();
 ok('Accueil : « Ça s’est passé ? » propose le Kiné du 19', await page.locator('[data-testid=to-confirm] [data-testid=task-item]:has-text("Kiné")').count());
 ok('Accueil : aucune salutation', !/Bonjour|Bonsoir|Belle journée/.test(await page.locator('main').textContent()));
 ok('Accueil : habitudes de la semaine avec compteur', /\d\/\d|fait pour la semaine/.test(await page.getByTestId('habits').textContent()));

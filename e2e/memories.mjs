@@ -8,7 +8,7 @@ const browser = await chromium.launch();
 const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'fr-FR', timezoneId: 'Europe/Paris' });
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
-await page.clock.install({ time: new Date('2026-11-27T21:10:00+01:00') });
+await page.clock.install({ time: new Date('2026-11-27T11:10:00+01:00') });
 
 // Une grande photo (2400 × 1600) fabriquée sur place
 await page.goto(BASE + '#/today');
@@ -47,12 +47,15 @@ await page.getByTestId('essential-option').filter({ hasText: 'Répondre à Inès
 await page.getByTestId('essentials-save').click();
 await page.waitForTimeout(400);
 ok('Essentiels : la tâche choisie est en haut', (await page.getByTestId('essentials').textContent()).includes('Répondre à Inès'));
-ok('Essentiels : pas de doublon dans « Ma journée »', (await page.locator('[data-testid=day-agenda] [data-testid=task-item]:has-text("Répondre à Inès")').count()) === 0);
+ok('Essentiels : pas de doublon dans « Au programme »', (await page.locator('[data-testid=day-agenda] [data-testid=task-item]:has-text("Répondre à Inès")').count()) === 0);
 const mem = page.getByTestId('memory-week');
 ok('Ce jour-là : la journée d’il y a une semaine revient sur l’accueil', (await mem.textContent()).includes('Le jour du Perchoir') && (await mem.textContent()).includes('Fou rire avec Léa'));
 ok('Ce jour-là : avec sa photo', (await mem.locator('img').count()) === 1);
 
-// Rituel du soir
+// Rituel du soir (le soir venu)
+await page.clock.setFixedTime(new Date('2026-11-27T21:10:00+01:00'));
+await page.reload();
+await page.waitForTimeout(700);
 await page.getByTestId('evening-ritual-open').click();
 await page.getByTestId('evening-ritual').getByTestId('mood-4').click();
 await page.getByTestId('ritual-next').click();

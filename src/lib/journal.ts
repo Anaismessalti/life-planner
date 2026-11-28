@@ -10,6 +10,9 @@ export const MOODS = [
   { value: 5, label: 'magic', color: '#A83278', line: 'pure stardust' },
 ];
 
+/** « a glowing day », « an okay week » : l'article anglais juste. */
+export const moodWord = (label: string, what: 'day' | 'week' | 'month') => `${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${label} ${what}`;
+
 export const GROUP_ORDER: Tracker['group'][] = ['sorties', 'amour', 'social', 'moi', 'cycle', 'sante', 'soin', 'maison', 'travail', 'etudes', 'autres'];
 
 export const GROUP_LABEL: Record<Tracker['group'], string> = {

@@ -2,7 +2,7 @@
 // Un rendez-vous confirmé rejoint le journal (et ses statistiques) ; annulé, il en ressort.
 import type { Task, TaskOutcome } from '../db/types';
 import { mergeItem, suggestFromEvent } from './bridge';
-import { materialize, type TaskView } from './tasks';
+import { isMultiDay, materialize, type TaskView } from './tasks';
 import { addDays } from './dates';
 import { db, now, update } from '../db/db';
 import { saveLog } from '../pages/Journal';
@@ -10,7 +10,7 @@ import { saveLog } from '../pages/Journal';
 export const OUTCOME_LABEL: Record<TaskOutcome, string> = {
   happened: 'A eu lieu',
   cancelled: 'Annulé',
-  noshow: 'Pas honoré',
+  noshow: 'Pas pu y aller',
   dropped: 'Plus nécessaire',
   skipped: 'Passée',
 };
@@ -23,26 +23,35 @@ export async function setOutcome(t: TaskView, outcome: TaskOutcome | undefined):
   return saved;
 }
 
-/** Le journal suit l'issue : « a eu lieu » ajoute l'activité reconnue, sinon on retire ce qui venait de ce rendez-vous. */
+/** Les jours couverts par un rendez-vous (tous les jours d'un séjour), à partir d'une date de début donnée. */
+function spanDays(t: Task, start = t.date!): string[] {
+  if (!isMultiDay(t)) return [start];
+  const n = Math.round((Date.parse(t.endDate!) - Date.parse(t.date!)) / 864e5);
+  return Array.from({ length: n + 1 }, (_, i) => addDays(start, i));
+}
+
+async function dropFromJournal(t: Task, days: string[]) {
+  for (const d of days) {
+    const log = await db.daylogs.get(d);
+    if (log?.items.some((i) => i.fromEvent === t.id)) await saveLog(d, (cur) => ({ items: cur.items.filter((i) => i.fromEvent !== t.id) }));
+  }
+}
+
+/** Le journal suit l'issue : « a eu lieu » ajoute l'activité reconnue (chaque jour d'un séjour), sinon on retire ce qui venait de ce rendez-vous. */
 async function syncJournal(t: Task) {
-  const date = t.date!;
   if (t.outcome === 'happened') {
     const [trackers, contacts] = await Promise.all([db.trackers.toArray(), db.contacts.toArray()]);
     const s = suggestFromEvent(t, trackers, contacts);
     if (!s) return;
-    await saveLog(date, (cur) => (cur.items.some((i) => i.trackerId === s.tracker.id && i.fromEvent === t.id) ? {} : { items: mergeItem(cur.items, { ...s.item, fromEvent: t.id }) }));
-  } else {
-    const log = await db.daylogs.get(date);
-    if (!log?.items.some((i) => i.fromEvent === t.id)) return;
-    await saveLog(date, (cur) => ({ items: cur.items.filter((i) => i.fromEvent !== t.id) }));
-  }
+    for (const d of spanDays(t))
+      await saveLog(d, (cur) => (cur.items.some((i) => i.trackerId === s.tracker.id && i.fromEvent === t.id) ? {} : { items: mergeItem(cur.items, { ...s.item, fromEvent: t.id }) }));
+  } else await dropFromJournal(t, spanDays(t));
 }
 
 /** Quand un rendez-vous confirmé change de date, son activité du journal le suit. */
 export async function moveJournalWithEvent(t: Task, fromDate: string | undefined) {
   if (t.kind !== 'event' || t.outcome !== 'happened' || !fromDate || fromDate === t.date) return;
-  const log = await db.daylogs.get(fromDate);
-  if (log?.items.some((i) => i.fromEvent === t.id)) await saveLog(fromDate, (cur) => ({ items: cur.items.filter((i) => i.fromEvent !== t.id) }));
+  await dropFromJournal(t, spanDays(t, fromDate));
   await syncJournal(t);
 }
 
@@ -59,7 +68,9 @@ export async function reschedule(t: TaskView, date: string | undefined, time: st
   if (fromDate && date && date !== fromDate) {
     patch.originalDate = t.originalDate || fromDate;
     patch.postponeHistory = [...(t.postponeHistory || []), { from: fromDate, to: date, at: now() }].slice(-10);
-    patch.postponeCount = Math.max(t.postponeCount || 0, t.postponeHistory?.length || 0) + 1;
+    // Avancer une tâche n'est pas la reporter : seul un déplacement plus tard compte comme report.
+    const prev = t.postponeCount ?? (t.postponeHistory?.length || 0);
+    patch.postponeCount = date > fromDate ? prev + 1 : prev;
   }
   if (t.kind === 'event' && t.outcome && date && date > today) {
     patch.outcome = undefined;
@@ -69,8 +80,7 @@ export async function reschedule(t: TaskView, date: string | undefined, time: st
   if (saved.kind === 'event') {
     if (t.outcome === 'happened' && !saved.outcome && fromDate) {
       // Il n'a finalement pas encore eu lieu : on retire l'activité ajoutée au journal.
-      const log = await db.daylogs.get(fromDate);
-      if (log?.items.some((i) => i.fromEvent === t.id)) await saveLog(fromDate, (cur) => ({ items: cur.items.filter((i) => i.fromEvent !== t.id) }));
+      await dropFromJournal(t, spanDays(t, fromDate));
     } else await moveJournalWithEvent(saved, fromDate);
   }
   return saved;

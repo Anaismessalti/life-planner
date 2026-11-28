@@ -10,7 +10,7 @@ import { formOf } from './lifeforms';
 import { sleepMinutes } from './wellbeing';
 
 const n1 = (v: number) => String(Math.round(v * 10) / 10).replace('.', ',');
-const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? 's' : ''}`;
+const plural = (n: number, w: string) => `${n} ${w}${n > 1 && !/[sx]$/.test(w) ? 's' : ''}`;
 export const median = (v: number[]) => {
   if (!v.length) return undefined;
   const s = [...v].sort((a, b) => a - b);
@@ -122,7 +122,20 @@ export function buildReview(a: Analytics, history: Analytics[], opts: { habits?:
   const nMood = a.moods.reduce((s, m) => s + m.days, 0);
   const usualMood = median(history.filter((h) => h.moods.reduce((s, m) => s + m.days, 0) >= REVIEW.moodDays && h.moodAvg !== undefined).map((h) => h.moodAvg!));
   if (nMood >= REVIEW.moodDays && a.moodAvg !== undefined) {
-    const tone = a.moodAvg >= 3.8 ? `Un${word === 'mois' ? '' : 'e'} ${word} plutôt lumineu${word === 'mois' ? 'x' : 'se'}` : a.moodAvg <= 2.6 ? `Un${word === 'mois' ? '' : 'e'} ${word} plus difficile` : `Un${word === 'mois' ? '' : 'e'} ${word} en demi-teinte`;
+    const un = `Un${word === 'mois' ? '' : 'e'} ${word}`;
+    // Comparé à TON niveau habituel quand on le connaît (3,5 peut être un très bon mois pour toi).
+    const tone =
+      usualMood !== undefined
+        ? a.moodAvg - usualMood >= 0.3
+          ? `${un} plus doux${word === 'mois' ? '' : 'e'} que d'habitude`
+          : usualMood - a.moodAvg >= 0.3
+            ? `${un} plus difficile que d'habitude`
+            : `${un} dans tes habitudes`
+        : a.moodAvg >= 3.8
+          ? `${un} plutôt lumineu${word === 'mois' ? 'x' : 'se'}`
+          : a.moodAvg <= 2.6
+            ? `${un} plus difficile`
+            : `${un} tranquille`;
     lived.push(`${tone} : humeur moyenne ${n1(a.moodAvg)}/5 sur ${nMood} jours notés${usualMood !== undefined ? ` (d'habitude ${n1(usualMood)})` : ''}.`);
   } else if (nMood > 0) {
     lived.push(`Humeur notée ${plural(nMood, 'jour')} seulement : trop peu pour dire comment s'est passé${word === 'mois' ? '' : 'e'} ${ce} ${word}.`);
@@ -135,15 +148,17 @@ export function buildReview(a: Analytics, history: Analytics[], opts: { habits?:
   // Ce que j'ai accompli.
   const g = a.agenda;
   if (g && g.tasks >= REVIEW.tasks) {
-    done.push(`Tu as fait ${g.done} des ${g.tasks} tâches prévues (${Math.round(g.doneRate * 100)} %)${g.doneLate ? `, dont ${g.doneLate} après un report` : ''}.`);
+    done.push(`${g.done} tâche${g.done > 1 ? 's' : ''} bouclée${g.done > 1 ? 's' : ''} sur ${g.tasks} prévue${g.tasks > 1 ? 's' : ''}${g.doneLate ? `, dont ${g.doneLate} après un report` : ''}.`);
   }
+  if (g && g.routine.total >= REVIEW.tasks) done.push(`Tâches récurrentes : ${g.routine.done} sur ${g.routine.total}.`);
   if (g && g.events) {
     const lost = g.cancelled + g.noshow;
-    done.push(`${plural(g.events, 'rendez-vous')} ${g.events > 1 ? 'ont' : 'a'} eu lieu${lost ? ` (${lost} annulé${lost > 1 ? 's' : ''} ou pas honoré${lost > 1 ? 's' : ''}, non comptés)` : ''}.`);
+    done.push(`${plural(g.events, 'rendez-vous')} ${g.events > 1 ? 'ont' : 'a'} eu lieu${lost ? ` (${lost} annulé${lost > 1 ? 's' : ''} ou manqué${lost > 1 ? 's' : ''}, non comptés)` : ''}.`);
   }
   for (const h of opts.habits || []) {
     if (h.target >= 1 && h.done >= h.target) done.push(`${h.name} : ${h.done} fois, objectif tenu (environ ${h.target}).`);
-    else if (h.target >= 2 && h.done < h.target * 0.6) aside.push(`${h.name} : ${h.done} fois, pour un objectif d'environ ${h.target}.`);
+    else if (h.target >= 2 && h.done < h.target * 0.6)
+      aside.push(h.done ? `${h.name} : ${h.done} fois, pour un objectif d'environ ${h.target}.` : `${h.name} n'a pas trouvé sa place ${ce} ${word}. C'est une info, pas un reproche.`);
   }
   if (a.rated.top[0]) {
     const r = a.rated.top[0];
@@ -174,12 +189,14 @@ export function buildReview(a: Analytics, history: Analytics[], opts: { habits?:
 }
 
 /** Objectifs d'habitudes ramenés à une période (pour le bilan). */
-export function habitsOver(a: Analytics, habits: { id: string; perWeek: number }[]): HabitMonth[] {
+export function habitsOver(a: Analytics, habits: { id: string; perWeek: number }[], softDays = 0): HabitMonth[] {
   return habits
     .map((h) => {
       const p = a.perTracker.find((x) => x.tracker.id === h.id);
       if (!p) return undefined;
-      return { name: p.tracker.name, done: p.days, target: Math.round((h.perWeek * a.elapsed) / 7) };
+      // Objectif ramené aux jours où tu as rempli ton journal (un jour oublié n'est pas un jour « sans ») et hors journées douces.
+      const days = Math.max(0, a.logged - (softDays || 0));
+      return { name: p.tracker.name, done: p.days, target: Math.round((h.perWeek * days) / 7) };
     })
     .filter((x): x is HabitMonth => !!x);
 }
@@ -205,7 +222,8 @@ export function welch(a: number[], b: number[]) {
   return se === 0 ? (mean(a) === mean(b) ? 0 : Infinity) : (mean(a) - mean(b)) / se;
 }
 
-export const CROSS = { days: 90, minDelta: 0.5, minT: 2, parties: 6, nextDay: 0.25 };
+/** minT = 3 : on teste une trentaine d'activités à la fois ; à 2, une « observation » apparaissait par hasard une fois sur trois. */
+export const CROSS = { days: 90, minDelta: 0.5, minT: 3, parties: 6, nextDay: 0.25 };
 
 /**
  * Ce que je remarque sur les 90 derniers jours : seulement des écarts nets, sur assez de jours dans chaque groupe.
